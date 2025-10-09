@@ -529,18 +529,10 @@ class DBUtils:
                                 decryption_machine_id,
                                 allow_encrypt,
                                 allow_decrypt,
-                                encryption_key,
                                 device_id,
                             ),
                         )
 
-                        cursor.execute(
-                            """
-                            INSERT INTO encryption_keys (key_name, key_value)
-                            VALUES (%s, %s)
-                        """,
-                            (device_id, encryption_key),
-                        )
                     else:
                         cursor.execute(
                             """

@@ -30,6 +30,42 @@ REQUEST_TIMEOUT = 30
 MAX_RETRIES = 2  # Reduced for faster offline fallback
 RETRY_DELAY = 2
 
+
+def get_available_drive_letter():
+    """Get next available drive letter for virtual mapping"""
+    import subprocess
+
+    # Get all currently used drive letters
+    used_drives = set()
+    bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+    for i in range(26):
+        if bitmask & (1 << i):
+            used_drives.add(chr(65 + i))
+
+    # Get existing subst drives
+    try:
+        result = subprocess.run(["subst"], capture_output=True, text=True, shell=True)
+        subst_output = result.stdout
+        for line in subst_output.split("\n"):
+            if line.strip() and ": => " in line:
+                drive_letter = line.split(":")[0].strip()
+                if drive_letter:
+                    used_drives.add(drive_letter)
+    except:
+        pass
+
+    print(f"[🔍] Currently used/mapped drives: {sorted(used_drives)}")
+
+    # Check letters from Z to D
+    for letter in "ZYXWVUTSRQPONMLKJIHGFED":
+        if letter not in used_drives:
+            print(f"[✅] Found available drive letter: {letter}:")
+            return f"{letter}:"
+
+    print("[⚠️] No available drive letters found")
+    return None
+
+
 # Initialize offline manager
 offline_manager = OfflineManager(SERVER_URL)
 
@@ -282,7 +318,7 @@ def get_connected_usb():
     try:
         bitmask = ctypes.windll.kernel32.GetLogicalDrives()
         for i in range(26):
-            drive_letter = f"{chr(65+i)}:\\"
+            drive_letter = f"{chr(65 + i)}:\\"
             if (
                 bitmask & (1 << i)
                 and ctypes.windll.kernel32.GetDriveTypeW(wintypes.LPCWSTR(drive_letter))
@@ -317,36 +353,34 @@ def decrypt_usb_to_virtual_view(drive, key, usb_id):
     return virtual_path, decrypted_count
 
 
-def map_virtual_drive(folder_path):
-    """Map virtual drive"""
+def map_virtual_drive(folder_path, drive_letter):
+    """Map virtual drive to specific letter"""
     try:
-        result = os.system(f'subst {VIRTUAL_DRIVE_LETTER} "{folder_path}"')
+        result = os.system(f'subst {drive_letter} "{folder_path}"')
         if result != 0:
-            print(f"[⚠️] Failed to map drive to {folder_path}")
+            print(f"[⚠️] Failed to map drive {drive_letter} to {folder_path}")
             return False
         else:
-            os.system(f"label {VIRTUAL_DRIVE_LETTER} usb_read")
-            print(
-                f"[ℹ️] Mapped {VIRTUAL_DRIVE_LETTER} to {folder_path} with label 'usb_read'"
-            )
+            os.system(f"label {drive_letter} usb_read_{drive_letter[0]}")
+            print(f"[ℹ️] Mapped {drive_letter} to {folder_path}")
             return True
     except Exception as e:
-        print(f"[❌] Error mapping virtual drive: {e}")
+        print(f"[❌] Error mapping virtual drive {drive_letter}: {e}")
         return False
 
 
-def unmap_virtual_drive():
-    """Unmap virtual drive"""
+def unmap_virtual_drive(drive_letter):
+    """Unmap specific virtual drive"""
     try:
-        result = os.system(f"subst {VIRTUAL_DRIVE_LETTER} /D")
+        result = os.system(f"subst {drive_letter} /D")
         if result != 0:
-            print(f"[⚠️] Failed to unmap {VIRTUAL_DRIVE_LETTER}")
+            print(f"[⚠️] Failed to unmap {drive_letter}")
             return False
         else:
-            print(f"[ℹ️] Unmapped virtual drive {VIRTUAL_DRIVE_LETTER}")
+            print(f"[ℹ️] Unmapped virtual drive {drive_letter}")
             return True
     except Exception as e:
-        print(f"[❌] Error unmapping virtual drive: {e}")
+        print(f"[❌] Error unmapping virtual drive {drive_letter}: {e}")
         return False
 
 
@@ -433,16 +467,13 @@ def main():
 
     os.makedirs(DECRYPTED_BASE, exist_ok=True)
 
-    seen = {}
-    usb_watchers = {}
     failed_drives = set()
+    usb_states = {}
 
     while True:
         try:
             connected = get_connected_usb()
-            new_drives = [
-                d for d in connected if d not in seen and d not in failed_drives
-            ]
+            new_drives = [d for d in connected if d not in usb_states]
 
             for drive in new_drives:
                 print(f"[🟢] USB Detected: {drive}")
@@ -509,15 +540,30 @@ def main():
                             get_files_to_decrypt(drive),
                         )
 
-                        if map_virtual_drive(virtual_path):
-                            seen[drive] = (usb_id, virtual_path)
+                        # Get available virtual drive letter
+                        virtual_drive = get_available_drive_letter()
+                        if not virtual_drive:
+                            print(f"[❌] USB {drive} - No available drive letters")
+                            if os.path.exists(virtual_path):
+                                shutil.rmtree(virtual_path)
+                            continue
+
+                        if map_virtual_drive(virtual_path, virtual_drive):
                             monitor = start_usb_monitor(
                                 drive, virtual_path, key, usb_id, machine_id
                             )
-                            if monitor:
-                                usb_watchers[drive] = monitor
+                            usb_states[drive] = {
+                                "usb_id": usb_id,
+                                "virtual_path": virtual_path,
+                                "virtual_drive": virtual_drive,  # <-- Store the letter
+                                "observer": monitor,
+                                "key": key,
+                            }
+                            print(f"[✅] USB {drive} - Mounted as {virtual_drive}")
                         else:
-                            print("[❌] Failed to map virtual drive")
+                            print(f"[❌] USB {drive} - Failed to map virtual drive")
+                            if os.path.exists(virtual_path):
+                                shutil.rmtree(virtual_path)
 
                 except Exception as e:
                     print(f"[❌] Error processing drive {drive}: {e}")
@@ -530,24 +576,30 @@ def main():
 
             # Handle removed drives
             removed = []
-            for d, (usb_id, vpath) in seen.items():
-                if d not in connected:
-                    print(f"[🔌] USB Removed: {d}. Cleaning up...")
+            for drive, state in list(usb_states.items()):
+                if drive not in connected:
+                    print(f"[🔌] USB Removed: {drive}. Cleaning up...")
                     try:
-                        unmap_virtual_drive()
-                        if os.path.exists(vpath):
-                            shutil.rmtree(vpath)
-                        if d in usb_watchers:
-                            usb_watchers[d].stop()
-                            usb_watchers[d].join()
-                            del usb_watchers[d]
-                        print(f"[🧹] Cleaned: {vpath}")
+                        if state.get("virtual_drive"):
+                            unmap_virtual_drive(state["virtual_drive"])
+
+                        # Stop file monitor
+                        if state.get("observer"):
+                            state["observer"].stop()
+                            state["observer"].join(timeout=2)
+
+                        # Clean up virtual folder
+                        if state.get("virtual_path") and os.path.exists(
+                            state["virtual_path"]
+                        ):
+                            shutil.rmtree(state["virtual_path"])
+                            print(f"[🧹] Cleaned: {state['virtual_path']}")
 
                         # Log USB removal
                         offline_manager.log_offline_activity(
                             "usb_removed",
                             "USB disconnected, cleaned up virtual view",
-                            usb_id,
+                            state.get("usb_id", "unknown"),
                             get_machine_id(),
                             "Auto Decrypt",
                             "success",
@@ -556,10 +608,10 @@ def main():
 
                     except Exception as e:
                         print(f"[⚠️] Cleanup error: {e}")
-                    removed.append(d)
+                    removed.append(drive)
 
-            for d in removed:
-                del seen[d]
+            for drive in removed:
+                del usb_states[drive]
 
             # Display periodic sync status
             stats = offline_manager.get_offline_stats()
@@ -579,10 +631,18 @@ def main():
         except KeyboardInterrupt:
             print("\n[🛑] Shutting down...")
             try:
-                unmap_virtual_drive()
-                for observer in usb_watchers.values():
-                    observer.stop()
-                    observer.join()
+                # Clean up all virtual drives
+                for drive, state in usb_states.items():
+                    print(f"[🧹] Cleaning up {drive}...")
+                    if state.get("virtual_drive"):
+                        unmap_virtual_drive(state["virtual_drive"])
+                    if state.get("observer"):
+                        state["observer"].stop()
+                        state["observer"].join(timeout=2)
+                    if state.get("virtual_path") and os.path.exists(
+                        state["virtual_path"]
+                    ):
+                        shutil.rmtree(state["virtual_path"])
             except:
                 pass
             break

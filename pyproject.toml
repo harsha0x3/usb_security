@@ -1,0 +1,14 @@
+[project]
+name = "usb-security"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cryptography>=46.0.2",
+    "python-dotenv>=1.1.1",
+    "pywin32>=311",
+    "requests>=2.32.5",
+    "watchdog>=6.0.0",
+    "wmi>=1.5.1",
+]
