@@ -1,0 +1,11 @@
+[
+  {
+    "applyTo": "jqayrmfbhwwqiy2k.js",
+    "headers": [
+      {
+        "name": "alt-svc",
+        "value": ""
+      }
+    ]
+  }
+]

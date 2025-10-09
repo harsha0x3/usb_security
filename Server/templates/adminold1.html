@@ -1,0 +1,758 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>USB Security Admin Panel</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    />
+    <style>
+      body {
+        background-color: #f8f9fa;
+      }
+      .masked {
+        font-family: monospace;
+        cursor: pointer;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body class="bg-light">
+    <div class="container py-4">
+      {% if readonly %}
+      <div class="alert alert-warning text-center mb-4" role="alert">
+        🔒 You are logged in with read-only access.
+      </div>
+      {% endif %}
+
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">🔐 USB Security Admin Dashboard</h2>
+        <form method="POST" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn btn-outline-danger btn-sm">
+            Logout
+          </button>
+        </form>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %} {% for category, message in messages %}
+      <div
+        class="alert alert-{{ category }} alert-dismissible fade show"
+        role="alert"
+      >
+        {{ message }}
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="alert"
+          aria-label="Close"
+        ></button>
+      </div>
+      {% endfor %} {% endif %} {% endwith %}
+
+      <!-- Devices Section -->
+      <div class="card mb-4">
+        <div
+          class="card-header bg-primary text-white d-flex justify-content-between align-items-center"
+        >
+          <span>Authorized Devices</span>
+          {% if not readonly %}
+          <button
+            class="btn btn-light btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#addDeviceModal"
+          >
+            ➕ Add Device
+          </button>
+          {% endif %}
+        </div>
+        <div class="card-body table-responsive">
+          <table class="table table-striped table-bordered align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>USB Serial Hash</th>
+                <th>Encrypt Machine</th>
+                <th>Decrypt Machine</th>
+                <th>Allow Encrypt</th>
+                <th>Allow Decrypt</th>
+                <th>Created At</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for device in devices %}
+              <tr>
+                <td>{{ device.id }}</td>
+                <td>{{ device.usb_serial_hash }}</td>
+                <td>{{ device.encryption_machine_id }}</td>
+                <td>{{ device.decryption_machine_id }}</td>
+                <td>{{ '✅' if device.allow_encrypt else '❌' }}</td>
+                <td>{{ '✅' if device.allow_decrypt else '❌' }}</td>
+                <td>{{ device.created_at }}</td>
+                <td class="d-flex">
+                  {% if not readonly %}
+                  <form
+                    method="POST"
+                    action="/admin/delete_machine"
+                    onsubmit="return confirm('Delete device {{ device.id }}?');"
+                    class="me-1"
+                  >
+                    <input
+                      type="hidden"
+                      name="device_id"
+                      value="{{ device.usb_serial_hash }}"
+                    />
+                    <input
+                      type="hidden"
+                      name="csrf_token"
+                      value="{{ csrf_token() }}"
+                    />
+                    <button
+                      type="submit"
+                      class="btn btn-sm btn-danger"
+                      title="Delete Device"
+                    >
+                      🗑️
+                    </button>
+                  </form>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-warning"
+                    data-bs-toggle="modal"
+                    data-bs-target="#editDeviceModal"
+                    data-device='{{ device | tojson | safe }}'
+                    onclick="populateEditModal(this)"
+                    title="Edit Device"
+                  >
+                    ✏️
+                  </button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% if not readonly %}
+      <!-- Add Device Modal -->
+      <div
+        class="modal fade"
+        id="addDeviceModal"
+        tabindex="-1"
+        aria-labelledby="addDeviceModalLabel"
+        aria-hidden="true"
+      >
+        <div class="modal-dialog">
+          <form method="POST" action="/admin/add_machine" class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="addDeviceModalLabel">
+                Add Authorized Device
+              </h5>
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token() }}"
+              />
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label for="device_id" class="form-label"
+                  >Device ID (USB Hash)</label
+                >
+                <input
+                  type="text"
+                  id="device_id"
+                  name="device_id"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="encryption_machine_id" class="form-label"
+                  >Encryption Machine ID</label
+                >
+                <input
+                  type="text"
+                  id="encryption_machine_id"
+                  name="encryption_machine_id"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="decryption_machine_id" class="form-label"
+                  >Decryption Machine ID</label
+                >
+                <input
+                  type="text"
+                  id="decryption_machine_id"
+                  name="decryption_machine_id"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="allow_encrypt"
+                  value="1"
+                  id="allow_encrypt_add"
+                  checked
+                />
+                <label class="form-check-label" for="allow_encrypt_add"
+                  >Allow Encrypt</label
+                >
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="allow_decrypt"
+                  value="1"
+                  id="allow_decrypt_add"
+                  checked
+                />
+                <label class="form-check-label" for="allow_decrypt_add"
+                  >Allow Decrypt</label
+                >
+              </div>
+              <div class="mb-3">
+                <label for="encryptionKeyInput" class="form-label"
+                  >Encryption Key <span class="text-danger">*</span></label
+                >
+                <div class="input-group">
+                  <input
+                    type="text"
+                    id="encryptionKeyInput"
+                    name="encryption_key"
+                    class="form-control"
+                    placeholder="Click 'Auto Generate' to create a key"
+                    readonly
+                    required
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    onclick="generateKey()"
+                  >
+                    Auto Generate
+                  </button>
+                </div>
+                <div class="form-text text-muted">
+                  You must generate an encryption key before adding the device.
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-primary" type="submit" id="addDeviceBtn">
+                Add Device
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Edit Device Modal -->
+      <div
+        class="modal fade"
+        id="editDeviceModal"
+        tabindex="-1"
+        aria-labelledby="editDeviceModalLabel"
+        aria-hidden="true"
+      >
+        <div class="modal-dialog">
+          <form
+            method="POST"
+            action="/admin/edit_machine"
+            class="modal-content"
+          >
+            <div class="modal-header">
+              <h5 class="modal-title" id="editDeviceModalLabel">Edit Device</h5>
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token() }}"
+              />
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" name="device_id" id="edit_device_id" />
+              <div class="mb-3">
+                <label for="edit_encryption_machine_id" class="form-label"
+                  >Encryption Machine ID</label
+                >
+                <input
+                  type="text"
+                  name="encryption_machine_id"
+                  id="edit_encryption_machine_id"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="edit_decryption_machine_id" class="form-label"
+                  >Decryption Machine ID</label
+                >
+                <input
+                  type="text"
+                  name="decryption_machine_id"
+                  id="edit_decryption_machine_id"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="allow_encrypt"
+                  id="edit_allow_encrypt"
+                  value="1"
+                />
+                <label class="form-check-label" for="edit_allow_encrypt"
+                  >Allow Encrypt</label
+                >
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="allow_decrypt"
+                  id="edit_allow_decrypt"
+                  value="1"
+                />
+                <label class="form-check-label" for="edit_allow_decrypt"
+                  >Allow Decrypt</label
+                >
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-primary" type="submit">
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %} {% if not readonly %}
+      <!-- Users Section -->
+      <div class="card mb-4">
+        <div
+          class="card-header bg-success text-white d-flex justify-content-between align-items-center"
+        >
+          <span>Users</span>
+          <button
+            class="btn btn-light btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#addUserModal"
+          >
+            ➕ Add User
+          </button>
+        </div>
+        <div class="card-body table-responsive">
+          <table class="table table-striped table-bordered mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Created At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for user in users %}
+              <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.role }}</td>
+                <td>{{ user.created_at }}</td>
+
+                <td class="d-flex gap-1">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-info"
+                    data-bs-toggle="modal"
+                    data-bs-target="#mfaQrModal"
+                    onclick="showMfaQr('{{ user.username }}')"
+                    title="Show MFA QR Code"
+                  >
+                    📱
+                  </button>
+                  <form
+                    method="POST"
+                    action="/admin/delete_user"
+                    onsubmit="return confirm('Delete user {{ user.username }}?');"
+                  >
+                    <input
+                      type="hidden"
+                      name="username"
+                      value="{{ user.username }}"
+                    />
+                    <input
+                      type="hidden"
+                      name="csrf_token"
+                      value="{{ csrf_token() }}"
+                    />
+                    <button
+                      type="submit"
+                      class="btn btn-sm btn-danger"
+                      title="Delete User"
+                    >
+                      🗑️
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- MFA QR Modal -->
+      <div
+        class="modal fade"
+        id="mfaQrModal"
+        tabindex="-1"
+        aria-labelledby="mfaQrModalLabel"
+        aria-hidden="true"
+      >
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="mfaQrModalLabel">MFA QR Code</h5>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+            <div class="modal-body text-center" id="mfaQrContent">
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-2">Loading MFA QR code...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add User Modal -->
+      <div
+        class="modal fade"
+        id="addUserModal"
+        tabindex="-1"
+        aria-labelledby="addUserModalLabel"
+        aria-hidden="true"
+      >
+        <div class="modal-dialog">
+          <form method="POST" action="/admin/add_user" class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="addUserModalLabel">Add New User</h5>
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token() }}"
+              />
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <input
+                  type="text"
+                  id="username"
+                  name="username"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="role" class="form-label">Role</label>
+                <select id="role" name="role" class="form-select" required>
+                  <option value="admin">Admin</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-success" type="submit">Add User</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Encryption Keys -->
+      <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">Encryption Keys</div>
+        <div class="card-body table-responsive">
+          <table class="table table-striped table-bordered mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Device</th>
+                <th>Key (Masked)</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for key in keys %}
+              <tr>
+                <td>{{ key.id }}</td>
+                <td>{{ key.key_name }}</td>
+                <td>
+                  {% if readonly %}
+                  <span class="masked text-muted">••••••••••••••••</span>
+                  {% else %}
+                  <span
+                    class="masked"
+                    onclick="toggleKey(this)"
+                    style="cursor: pointer; user-select: text"
+                  >
+                    ••••••••••••••••
+                  </span>
+                  <input type="hidden" value="{{ key.key_value }}" />
+                  {% endif %}
+                </td>
+                <td>{{ key.created_at }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <nav>
+            <ul class="pagination justify-content-center my-3">
+              <li class="page-item {% if keys_page <= 1 %}disabled{% endif %}">
+                <a
+                  class="page-link"
+                  href="{{ url_for('admin_panel', keys_page=keys_page - 1, logs_page=logs_page) }}"
+                  >Previous</a
+                >
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link"
+                  >Page {{ keys_page }} of {{ keys_pages }}</span
+                >
+              </li>
+              <li
+                class="page-item {% if keys_page >= keys_pages %}disabled{% endif %}"
+              >
+                <a
+                  class="page-link"
+                  href="{{ url_for('admin_panel', keys_page=keys_page + 1, logs_page=logs_page) }}"
+                  >Next</a
+                >
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Audit Logs -->
+      <div class="card mb-4">
+        <div
+          class="card-header bg-dark text-white d-flex justify-content-between align-items-center"
+        >
+          <span>Audit Logs</span>
+          <a
+            href="/admin/download_logs"
+            class="btn btn-sm btn-light"
+            title="Download Logs CSV"
+            >⬇️ Download CSV</a
+          >
+        </div>
+        <div class="card-body table-responsive">
+          <table class="table table-striped table-bordered mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>USB Serial Hash</th>
+                <!-- ✅ NEW -->
+                <th>Machine ID</th>
+                <th>Operation</th>
+                <th>Status</th>
+                <th>Files</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for log in logs %}
+              <tr>
+                <td>{{ log.id }}</td>
+                <td>{{ log.username or 'N/A' }}</td>
+                <td>{{ log.action or '—' }}</td>
+                <td>{{ log.details or '—' }}</td>
+                <td>{{ log.usb_serial_hash or '—' }}</td>
+                <!-- ✅ NEW -->
+                <td>{{ log.machine_id or '—' }}</td>
+                <td>{{ log.operation or '—' }}</td>
+                <td>{{ log.status or '—' }}</td>
+                <td>{{ log.files or '—' }}</td>
+                <td>{{ log.timestamp }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <nav>
+            <ul class="pagination justify-content-center my-3">
+              <li class="page-item {% if logs_page <= 1 %}disabled{% endif %}">
+                <a
+                  class="page-link"
+                  href="{{ url_for('admin_panel', keys_page=keys_page, logs_page=logs_page - 1) }}"
+                  >Previous</a
+                >
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link"
+                  >Page {{ logs_page }} of {{ logs_pages }}</span
+                >
+              </li>
+              <li
+                class="page-item {% if logs_page >= logs_pages %}disabled{% endif %}"
+              >
+                <a
+                  class="page-link"
+                  href="{{ url_for('admin_panel', keys_page=keys_page, logs_page=logs_page + 1) }}"
+                  >Next</a
+                >
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      // Toggle showing/hiding encryption key
+      function toggleKey(el) {
+        const input = el.nextElementSibling;
+        if (el.textContent.includes("•")) {
+          el.textContent = input.value;
+        } else {
+          el.textContent = "••••••••••••••••";
+        }
+      }
+
+      // Auto-generate a random encryption key (example)
+
+      function generateKey() {
+        const array = new Uint8Array(32); // 32 random bytes
+        window.crypto.getRandomValues(array);
+
+        // Convert to base64-url-safe with padding
+        let binary = "";
+        for (let i = 0; i < array.length; i++) {
+          binary += String.fromCharCode(array[i]);
+        }
+
+        const base64 = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_"); // DO NOT strip '=' padding
+
+        const keyInput = document.getElementById("encryptionKeyInput");
+        keyInput.value = base64;
+
+        keyInput.removeAttribute("readonly");
+        // Add it back after a brief moment to prevent manual editing
+        setTimeout(() => {
+          keyInput.setAttribute("readonly", "readonly");
+        }, 100);
+      }
+
+      // Validate form before submission
+      document
+        .getElementById("addDeviceBtn")
+        .addEventListener("click", function (e) {
+          const keyInput = document.getElementById("encryptionKeyInput");
+          if (!keyInput.value.trim()) {
+            e.preventDefault();
+            alert(
+              'Please generate an encryption key by clicking "Auto Generate" button.'
+            );
+            return false;
+          }
+        });
+
+      // Populate edit modal with device data
+      function populateEditModal(button) {
+        const device = JSON.parse(button.getAttribute("data-device"));
+        document.getElementById("edit_device_id").value =
+          device.usb_serial_hash;
+        document.getElementById("edit_encryption_machine_id").value =
+          device.encryption_machine_id;
+        document.getElementById("edit_decryption_machine_id").value =
+          device.decryption_machine_id;
+        document.getElementById("edit_allow_encrypt").checked =
+          device.allow_encrypt;
+        document.getElementById("edit_allow_decrypt").checked =
+          device.allow_decrypt;
+      }
+
+      // Show MFA QR code for a specific user
+      function showMfaQr(username) {
+        const modalContent = document.getElementById("mfaQrContent");
+
+        // Show loading spinner
+        modalContent.innerHTML = `
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2">Loading MFA QR code...</p>
+        `;
+
+        // Fetch the QR code content from your existing endpoint
+        fetch(`/admin/show_qr/${encodeURIComponent(username)}`)
+          .then((response) => response.text())
+          .then((html) => {
+            modalContent.innerHTML = html;
+          })
+          .catch((error) => {
+            console.error("Error loading MFA QR:", error);
+            modalContent.innerHTML = `
+              <div class="alert alert-danger" role="alert">
+                <strong>Error!</strong> Failed to load MFA QR code for ${username}.
+              </div>
+            `;
+          });
+      }
+    </script>
+  </body>
+</html>

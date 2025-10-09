@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MFA Setup</title>
+</head>
+<body style="font-family:sans-serif;text-align:center;margin-top:50px">
+    <h2>👤 {{ username }} - Scan This QR in Google Authenticator</h2>
+    <p><b>Secret:</b> {{ secret }}</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?data={{ otp_uri | urlencode }}&size=200x200" alt="QR Code">
+    <br><br>
+    <a href="/admin">🔙 Back to Admin Panel</a>
+</body>
+</html>

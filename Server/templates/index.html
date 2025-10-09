@@ -1,0 +1,42 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>User Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #eef2f6;
+            color: #333;
+            padding: 20px;
+            text-align: center;
+        }
+        h2 {
+            color: #2b4d7a;
+        }
+        a {
+            display: inline-block;
+            margin: 10px;
+            padding: 10px 16px;
+            text-decoration: none;
+            background-color: #2b4d7a;
+            color: white;
+            border-radius: 5px;
+        }
+        a:hover {
+            background-color: #1e3c63;
+        }
+    </style>
+</head>
+<body>
+    <h2>Welcome, {{ session['user'] }}</h2>
+
+    {% if session['role'] == 'admin' %}
+        <a href="/admin">⚙ Go to Admin Panel</a><br>
+    {% else %}
+        <p>You are logged in with <strong>{{ session['role'] }}</strong> privileges.</p>
+    {% endif %}
+
+    <a href="/logout">🔒 Logout</a>
+</body>
+</html>

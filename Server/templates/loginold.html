@@ -1,0 +1,125 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>🔐 USB Security Login</title>
+<style>
+  /* Reset & base */
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #3a8dde, #1c3b72);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    color: #fff;
+  }
+
+  /* Container */
+  .login-container {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 40px 30px;
+    border-radius: 12px;
+    width: 320px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    backdrop-filter: blur(8px);
+    text-align: center;
+  }
+
+  /* Title */
+  .title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    letter-spacing: 1.5px;
+    animation: blink 1.5s steps(2, start) infinite;
+  }
+  @keyframes blink {
+    50% {opacity: 0;}
+  }
+
+  /* Inputs */
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    padding: 12px 15px;
+    margin-bottom: 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    outline: none;
+    transition: background-color 0.3s, box-shadow 0.3s;
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+  }
+  input::placeholder {
+    color: #ddd;
+  }
+  input:focus {
+    background: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 8px #4c9aff;
+  }
+
+  /* Button */
+  button {
+    width: 100%;
+    background-color: #4c9aff;
+    border: none;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    color: white;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background-color: #1c64f2;
+  }
+
+  /* Error message */
+  .error {
+    background: #ff4d4d;
+    color: white;
+    padding: 10px;
+    margin-bottom: 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    box-shadow: 0 0 10px rgba(255, 77, 77, 0.6);
+  }
+
+  /* Responsive */
+  @media (max-width: 400px) {
+    .login-container {
+      width: 90%;
+      padding: 30px 20px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="login-container">
+  <div class="title">🔐 USB Security</div>
+  <h2 style="margin-bottom: 25px; color: #e0e7ff;">Admin Login</h2>
+
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" novalidate>
+    <input type="text" name="username" placeholder="Username" autocomplete="username" required />
+    <input type="password" name="password" placeholder="Password" autocomplete="current-password" required />
+    <input type="text" name="totp" placeholder="Enter OTP from Authenticator" autocomplete="one-time-code" required />
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Login</button>
+  </form>
+</div>
+
+</body>
+</html>
