@@ -499,20 +499,20 @@ def export_emergency_logs():
     )
 
 
-@app.route("/device/extensions/<usb_serial_hash>", methods=["GET"])
-def get_device_extensions(usb_serial_hash):
-    """Return excluded extensions for a specific USB device"""
-    try:
-        extensions = db.get_excluded_extensions(usb_serial_hash)
-        return jsonify(
-            {
-                "status": "success",
-                "usb_serial_hash": usb_serial_hash,
-                "excluded_extensions": extensions,
-            }
-        ), 200
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+# @app.route("/device/extensions/<usb_serial_hash>", methods=["GET"])
+# def get_device_extensions(usb_serial_hash):
+#     """Return excluded extensions for a specific USB device"""
+#     try:
+#         extensions = db.get_excluded_extensions(usb_serial_hash=usb_serial_hash,)
+#         return jsonify(
+#             {
+#                 "status": "success",
+#                 "usb_serial_hash": usb_serial_hash,
+#                 "excluded_extensions": extensions,
+#             }
+#         ), 200
+#     except Exception as e:
+#         return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/admin/download_client")

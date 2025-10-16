@@ -670,6 +670,6 @@ class DBUtils:
             fetchone=True,
         )
         if result and result["excluded_extensions"]:
-            # Return as array/list
-            return result["excluded_extensions"].split(",")
+            # Split by comma and strip whitespace from each item
+            return [ext.strip() for ext in result["excluded_extensions"].split(",")]
         return []  # Empty list if no restrictions

