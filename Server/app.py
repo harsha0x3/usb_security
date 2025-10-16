@@ -325,6 +325,27 @@ def sync_offline_log():
         return jsonify({"error": "Internal server error"}), 500
 
 
+@app.route("/get_excluded_extensions", methods=["POST"])
+@limiter.limit("200 per minute")
+@secure_request
+def get_excluded_extensions():
+    """Get excluded file extensions for a USB device"""
+    try:
+        data = request.get_json()
+        usb_serial_hash = data.get("usb_serial_hash")
+
+        if not usb_serial_hash:
+            return jsonify({"error": "USB serial hash required"}), 400
+
+        extensions = db.get_excluded_extensions(usb_serial_hash)
+
+        return jsonify({"status": "success", "excluded_extensions": extensions}), 200
+
+    except Exception as e:
+        logger.error(f"[❌] Error getting excluded extensions: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
 @app.route("/sync/key", methods=["POST"])
 @limiter.limit("20 per minute")  # Moderate limit for key sync
 @secure_request

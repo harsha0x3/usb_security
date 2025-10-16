@@ -265,6 +265,7 @@ def add_machine():
         # Checkboxes return 'on' if checked, else None
         allow_encrypt = "allow_encrypt" in data
         allow_decrypt = "allow_decrypt" in data
+        excluded_extensions = data["excluded_extensions"]
 
         encryption_key = data.get("encryption_key")
         if not encryption_key:
@@ -279,6 +280,7 @@ def add_machine():
             allow_decrypt=allow_decrypt,
             encryption_key=encryption_key,
             decryption_key=None,
+            excluded_extensions=excluded_extensions,
         )
         print(f"[INFO] Machine {device_id} added or updated.")
         return redirect("/admin")
@@ -311,6 +313,7 @@ def edit_machine():
         device_id = request.form.get("device_id")
         encryption_machine_id = request.form.get("encryption_machine_id")
         decryption_machine_id = request.form.get("decryption_machine_id")
+        excluded_extensions = request.form.get("excluded_extensions", "").strip()
 
         # ✅ Fix: Match checkbox values
         allow_encrypt = 1 if request.form.get("allow_encrypt") == "1" else 0
@@ -326,6 +329,7 @@ def edit_machine():
             decryption_machine_id,
             allow_encrypt,
             allow_decrypt,
+            excluded_extensions,
         )
         if success is None:
             flash("Failed to update device", "danger")
@@ -493,6 +497,22 @@ def export_emergency_logs():
         as_attachment=True,
         download_name="emergency_logs.csv",
     )
+
+
+@app.route("/device/extensions/<usb_serial_hash>", methods=["GET"])
+def get_device_extensions(usb_serial_hash):
+    """Return excluded extensions for a specific USB device"""
+    try:
+        extensions = db.get_excluded_extensions(usb_serial_hash)
+        return jsonify(
+            {
+                "status": "success",
+                "usb_serial_hash": usb_serial_hash,
+                "excluded_extensions": extensions,
+            }
+        ), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/admin/download_client")

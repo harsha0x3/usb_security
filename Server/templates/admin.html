@@ -93,6 +93,7 @@
                 <th>Decrypt Machine</th>
                 <th>Allow Encrypt</th>
                 <th>Allow Decrypt</th>
+                <th>Excluded Extensions</th>
                 <th>Created At</th>
                 <th>Action</th>
               </tr>
@@ -106,6 +107,7 @@
                 <td>{{ device.decryption_machine_id }}</td>
                 <td>{{ '✅' if device.allow_encrypt else '❌' }}</td>
                 <td>{{ '✅' if device.allow_decrypt else '❌' }}</td>
+                <td>{{device.excluded_extensions or None}}</td>
                 <td>
                   <script>
                     document.write(new Date("{{ device.created_at }}").toLocaleString());
@@ -148,7 +150,8 @@
     "encryption_machine_id": "{{ device.encryption_machine_id }}",
     "decryption_machine_id": "{{ device.decryption_machine_id }}",
     "allow_encrypt": {{ "true" if device.allow_encrypt else "false" }},
-    "allow_decrypt": {{ "true" if device.allow_decrypt else "false" }}
+    "allow_decrypt": {{ "true" if device.allow_decrypt else "false" }},
+    "excluded_extensions": "{{ device.excluded_extensions or "" }}"
   }'
                     onclick="populateEditModal(this)"
                     title="Edit Device"
@@ -280,6 +283,22 @@
                   You must generate an encryption key before adding the device.
                 </div>
               </div>
+
+              <div class="mb-3">
+                <label for="excluded_extensions" class="form-label">
+                  Excluded File Extensions (Optional)
+                </label>
+                <input
+                  type="text"
+                  id="excluded_extensions"
+                  name="excluded_extensions"
+                  class="form-control"
+                  placeholder=".txt,.pdf,.docx,.jpg"
+                />
+                <div class="form-text text-muted">
+                  Enter comma-separated extensions (e.g., .txt,.pdf,.docx). Leave empty to allow all file types.
+                </div>
+              </div>
             </div>
             <div class="modal-footer">
               <button class="btn btn-primary" type="submit" id="addDeviceBtn">
@@ -342,6 +361,18 @@
                   id="edit_decryption_machine_id"
                   class="form-control"
                   required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="edit_excluded_extensions" class="form-label">
+                  Excluded File Extensions
+                </label>
+                <input
+                  type="text"
+                  name="excluded_extensions"
+                  id="edit_excluded_extensions"
+                  class="form-control"
+                  placeholder=".txt,.pdf,.docx"
                 />
               </div>
               <div class="form-check form-switch mb-2">
@@ -759,6 +790,8 @@
           device.allow_encrypt;
         document.getElementById("edit_allow_decrypt").checked =
           device.allow_decrypt;
+        document.getElementById("edit_excluded_extensions").value = 
+          device.allowed_extensions || '';
       }
 
       // Show MFA QR code for a specific user

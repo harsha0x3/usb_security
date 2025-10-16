@@ -502,6 +502,7 @@ class DBUtils:
         allow_decrypt,
         encryption_key,
         decryption_key,
+        excluded_extensions,
     ):
         try:
             conn = self.get_connection()
@@ -521,7 +522,8 @@ class DBUtils:
                                 decryption_machine_id = %s,
                                 allow_encrypt = %s,
                                 allow_decrypt = %s,
-                                encryption_key = %s
+                                encryption_key = %s,
+                                excluded_extensions = %s
                             WHERE usb_serial_hash = %s
                         """,
                             (
@@ -529,6 +531,7 @@ class DBUtils:
                                 decryption_machine_id,
                                 allow_encrypt,
                                 allow_decrypt,
+                                excluded_extensions,
                                 device_id,
                             ),
                         )
@@ -540,7 +543,8 @@ class DBUtils:
                             SET encryption_machine_id = %s,
                                 decryption_machine_id = %s,
                                 allow_encrypt = %s,
-                                allow_decrypt = %s
+                                allow_decrypt = %s,
+                                excluded_extensions = %s,
                             WHERE usb_serial_hash = %s
                         """,
                             (
@@ -548,6 +552,7 @@ class DBUtils:
                                 decryption_machine_id,
                                 allow_encrypt,
                                 allow_decrypt,
+                                excluded_extensions,
                                 device_id,
                             ),
                         )
@@ -556,8 +561,8 @@ class DBUtils:
                         """
                         INSERT INTO authorized_devices (
                             usb_serial_hash, encryption_machine_id, decryption_machine_id,
-                            allow_encrypt, allow_decrypt, encryption_key
-                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                            allow_encrypt, allow_decrypt, encryption_key, excluded_extensions
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                         (
                             device_id,
@@ -566,6 +571,7 @@ class DBUtils:
                             allow_encrypt,
                             allow_decrypt,
                             encryption_key,
+                            excluded_extensions,
                         ),
                     )
 
@@ -591,6 +597,7 @@ class DBUtils:
         decryption_machine_id,
         allow_encrypt,
         allow_decrypt,
+        excluded_extensions,
     ):
         try:
             conn = self.get_connection()
@@ -601,7 +608,8 @@ class DBUtils:
                     SET encryption_machine_id = %s,
                         decryption_machine_id = %s,
                         allow_encrypt = %s,
-                        allow_decrypt = %s
+                        allow_decrypt = %s,
+                        excluded_extensions = %s
                     WHERE usb_serial_hash = %s
                 """,
                     (
@@ -609,6 +617,7 @@ class DBUtils:
                         decryption_machine_id,
                         allow_encrypt,
                         allow_decrypt,
+                        excluded_extensions,
                         device_id,
                     ),
                 )
@@ -653,3 +662,14 @@ class DBUtils:
             fetchall=True,
         )
         return keys, total_result["count"] if total_result else 0
+
+    def get_excluded_extensions(self, usb_serial_hash):
+        result = self._execute(
+            "SELECT excluded_extensions FROM authorized_devices WHERE usb_serial_hash = %s",
+            (usb_serial_hash,),
+            fetchone=True,
+        )
+        if result and result["excluded_extensions"]:
+            # Return as array/list
+            return result["excluded_extensions"].split(",")
+        return []  # Empty list if no restrictions
