@@ -486,7 +486,7 @@ class DBUtils:
         return self._execute(
             """
             SELECT usb_serial_hash, encryption_machine_id, decryption_machine_id,
-                   allow_encrypt, allow_decrypt, created_at
+                   allow_encrypt, allow_decrypt, created_at, excluded_extensions
             FROM authorized_devices
             ORDER BY created_at DESC
         """,
