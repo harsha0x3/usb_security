@@ -119,15 +119,16 @@ def get_files_to_encrypt(usb_path, excluded_extensions=[]):
     return files_to_encrypt
 
 
-def get_excluded_extensions(device_id):
+def get_excluded_extensions(machine_id, usb_serial_hash):
     """Get excluded file extensions from server"""
     try:
         response = requests.post(
             f"{SERVER_URL}/get_excluded_extensions",
-            json={"usb_serial_hash": device_id},
+            json={"machine_id": machine_id, "usb_serial_hash": usb_serial_hash},
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": "USB-Encryption-Agent/1.0",
             },
             timeout=10,
         )
@@ -413,9 +414,11 @@ def main():
                             f"[🔄] USB {drive} - Scanning for new files to encrypt..."
                         )
                         device_id = drive_state["device_id"]
+                        machine_id = get_machine_id()
+                        usb_serial_hash = get_usb_hardware_serial(drive)
 
                         excluded_extensions = get_excluded_extensions(
-                            device_id=device_id
+                            machine_id=machine_id, usb_serial_hash=usb_serial_hash
                         )
 
                         if excluded_extensions:
@@ -433,9 +436,6 @@ def main():
                             print(
                                 f"[📂] USB {drive} - Found {len(files_to_encrypt)} new files"
                             )
-
-                            machine_id = get_machine_id()
-
                             # Use existing key or get new one
                             key = drive_state.get("key")
                             if not key:
@@ -493,13 +493,13 @@ def main():
                     print(f"[🆕] USB Detected: {drive}")
 
                     device_id = get_usb_hardware_serial(drive)
-                    excluded_extensions = get_excluded_extensions(device_id=device_id)
                     if not device_id:
                         print(
                             f"[⚠️] USB {drive} - Could not get hardware serial, skipping..."
                         )
                         # Don't add to usb_states, will retry next loop
                         continue
+                    excluded_extensions = get_excluded_extensions(device_id=device_id)
 
                     machine_id = get_machine_id()
                     print(f"[🧬] USB {drive} - Serial Hash: {device_id[:16]}...")

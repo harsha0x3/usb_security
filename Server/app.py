@@ -333,11 +333,12 @@ def get_excluded_extensions():
     try:
         data = request.get_json()
         usb_serial_hash = data.get("usb_serial_hash")
+        machine_id = data.get("machine_id")
 
         if not usb_serial_hash:
             return jsonify({"error": "USB serial hash required"}), 400
 
-        extensions = db.get_excluded_extensions(usb_serial_hash)
+        extensions = db.get_excluded_extensions(usb_serial_hash, machine_id=machine_id)
 
         return jsonify({"status": "success", "excluded_extensions": extensions}), 200
 

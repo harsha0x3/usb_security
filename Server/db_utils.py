@@ -663,10 +663,10 @@ class DBUtils:
         )
         return keys, total_result["count"] if total_result else 0
 
-    def get_excluded_extensions(self, usb_serial_hash):
+    def get_excluded_extensions(self, usb_serial_hash, machine_id):
         result = self._execute(
-            "SELECT excluded_extensions FROM authorized_devices WHERE usb_serial_hash = %s",
-            (usb_serial_hash,),
+            "SELECT excluded_extensions FROM authorized_devices WHERE usb_serial_hash = %s AND encryption_machine_id = %s",
+            (usb_serial_hash, machine_id),
             fetchone=True,
         )
         if result and result["excluded_extensions"]:
