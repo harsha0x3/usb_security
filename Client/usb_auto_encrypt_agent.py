@@ -88,7 +88,9 @@ def encrypt_usb(usb_path, key, excluded_extensions):
             if any(filepath.lower().endswith(ext) for ext in SYSTEM_EXTENSIONS):
                 continue
             if any(filepath.lower().endswith(ext) for ext in excluded_extensions):
-                print(f"🔍🔍🔍🔍 eFOUND SOMe EXTENSIONS in encrypting")
+                print(
+                    f"🔍🔍🔍🔍 eFOUND SOMe EXTENSIONS in encrypting", filepath.lower()
+                )
 
                 continue
 
@@ -113,13 +115,11 @@ def get_files_to_encrypt(usb_path, excluded_extensions=[]):
                 if any(filepath.lower().endswith(ext) for ext in SYSTEM_EXTENSIONS):
                     continue
                 if excluded_extensions:
-                    print(
-                        f"🦖🦖🦖🦖 excluded Extensions TYPE {type(excluded_extensions)} the extes = {excluded_extensions}"
-                    )
+                    print(f"[ℹ️] Extensios are excluded {excluded_extensions}")
                     if any(
                         filepath.lower().endswith(ext) for ext in excluded_extensions
                     ):
-                        print(f"🦖🦖🦖🦖 eFOUND SOMe EXTENSIONS")
+                        print(f"🦖🦖🦖🦖 eFOUND SOMe EXTENSIONS {filepath.lower()}")
 
                         continue
 
@@ -424,11 +424,11 @@ def main():
                             f"[🔄] USB {drive} - Scanning for new files to encrypt..."
                         )
                         device_id = drive_state["device_id"]
-                        print("✅✅✅✅✅✅ -- device_id --> ", device_id)
+                        # print("✅✅✅✅✅✅ -- device_id --> ", device_id)
                         machine_id = get_machine_id()
-                        print("✅✅✅✅✅✅ -- machine_id --> ", machine_id)
+                        # print("✅✅✅✅✅✅ -- machine_id --> ", machine_id)
                         usb_serial_hash = get_usb_hardware_serial(drive)
-                        print("✅✅✅✅✅✅ -- usb_serial_hash --> ", usb_serial_hash)
+                        # print("✅✅✅✅✅✅ -- usb_serial_hash --> ", usb_serial_hash)
 
                         excluded_extensions = get_excluded_extensions(
                             machine_id=machine_id, usb_serial_hash=usb_serial_hash
