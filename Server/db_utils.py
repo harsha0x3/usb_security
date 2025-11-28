@@ -514,48 +514,26 @@ class DBUtils:
                 exists = cursor.fetchone()["count"] > 0
 
                 if exists:
-                    if encryption_key:
-                        cursor.execute(
-                            """
+                    cursor.execute(
+                        """
                             UPDATE authorized_devices
                             SET encryption_machine_id = %s,
                                 decryption_machine_id = %s,
                                 allow_encrypt = %s,
                                 allow_decrypt = %s,
-                                encryption_key = %s,
                                 excluded_extensions = %s
                             WHERE usb_serial_hash = %s
                         """,
-                            (
-                                encryption_machine_id,
-                                decryption_machine_id,
-                                allow_encrypt,
-                                allow_decrypt,
-                                excluded_extensions,
-                                device_id,
-                            ),
-                        )
+                        (
+                            encryption_machine_id,
+                            decryption_machine_id,
+                            allow_encrypt,
+                            allow_decrypt,
+                            excluded_extensions,
+                            device_id,
+                        ),
+                    )
 
-                    else:
-                        cursor.execute(
-                            """
-                            UPDATE authorized_devices
-                            SET encryption_machine_id = %s,
-                                decryption_machine_id = %s,
-                                allow_encrypt = %s,
-                                allow_decrypt = %s,
-                                excluded_extensions = %s,
-                            WHERE usb_serial_hash = %s
-                        """,
-                            (
-                                encryption_machine_id,
-                                decryption_machine_id,
-                                allow_encrypt,
-                                allow_decrypt,
-                                excluded_extensions,
-                                device_id,
-                            ),
-                        )
                 else:
                     cursor.execute(
                         """
