@@ -37,24 +37,54 @@ app = Flask(__name__)
 CORS(app)
 
 # Configure Talisman with automatic nonce generation
-
 Talisman(
     app,
-    # ✅ Keep HTTPS enforcement
+    # HTTPS configuration
     force_https=True,
     strict_transport_security=True,
     strict_transport_security_max_age=31536000,
     strict_transport_security_include_subdomains=True,
     strict_transport_security_preload=True,
-    # 🚫 REMOVE CSP (CSP IS FOR BROWSERS, NOT APIs)
-    content_security_policy=None,
-    # ✅ Keep basic hardening
+    # CSP without problematic CDNs - Talisman handles nonces automatically
+    content_security_policy={
+        "default-src": "'self'",
+        "script-src": "",  # Talisman adds nonce automatically
+        "style-src": "'self' https://fonts.googleapis.com",  # Talisman adds nonce automatically
+        "font-src": "'self' https://fonts.gstatic.com",
+        "img-src": "'self' data:",
+        "connect-src": "'self' https://usbapp.titancustomers.com",
+        "base-uri": "'self'",
+        "form-action": "'self'",
+        "form-action": "'self'",
+        "frame-ancestors": "'self'",
+        "object-src": "'none'",
+        "media-src": "'self'",
+        "worker-src": "'self'",
+        "child-src": "'self'",
+        "manifest-src": "'self'",
+        "report-uri": "/csp-report",
+    },
+    # Enable automatic nonce generation
+    content_security_policy_nonce_in=["script-src", "style-src"],
+    # Security headers
     frame_options="DENY",
     x_content_type_options=True,
-    x_xss_protection=False,  # Deprecated, disable to avoid conflicts
-    referrer_policy="no-referrer",
-    # ✅ Cookies irrelevant for API auth but safe
+    x_xss_protection=True,
+    referrer_policy="strict-origin-when-cross-origin",
+    # Cookie settings for HTTP
     session_cookie_secure=True,
+    # Permissions Policy
+    permissions_policy={
+        "geolocation": "()",
+        "microphone": "()",
+        "camera": "()",
+        "payment": "()",
+        "usb": "()",
+        "accelerometer": "()",
+        "gyroscope": "()",
+        "magnetometer": "()",
+        "fullscreen": "(self)",
+    },
 )
 
 
