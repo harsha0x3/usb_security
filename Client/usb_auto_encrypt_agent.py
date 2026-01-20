@@ -1,5 +1,4 @@
-# usb_auto_encrypt_agent.py - FIXED for Multiple USB Support
-
+# Client\usb_auto_encrypt_agent.py
 import os
 import time
 import socket
@@ -18,7 +17,7 @@ from offline_manager import OfflineManager
 load_dotenv()
 
 # Config
-SERVER_URL = "https://usbapp.titan.in"
+SERVER_URL = "http://localhost:8054"
 ENCRYPTED_EXT = ".locked"
 SYSTEM_EXTENSIONS = [".exe", ".dll", ".sys", ".bat", ".cmd"]
 
@@ -316,7 +315,7 @@ def get_encryption_key_offline(device_id, machine_id, files):
 def get_encryption_key(device_id, machine_id, files):
     """Get encryption key with online/offline fallback"""
     # Try online first
-    if offline_manager.is_server_reachable():
+    if offline_manager.get_server_status():
         key = get_encryption_key_online(device_id, machine_id, files)
         if key and key != "SERVER_UNREACHABLE":
             # Store key offline for future use
@@ -638,5 +637,5 @@ if __name__ == "__main__":
         main()
     finally:
         # Clean shutdown
-        offline_manager.stop_sync_thread()
+        # offline_manager.stop_sync_thread()
         print("[👋] Encryption agent stopped")

@@ -21,7 +21,10 @@ class OfflineManager:
         self.sync_thread = None
         self.running = True
         self.init_database()
-        self.start_sync_thread()
+        self._server_reachable = False
+        self._last_health_check = 0
+        self._health_ttl = 120
+        # self.start_sync_thread()
 
     def init_database(self):
         """Initialize local SQLite database"""
@@ -241,18 +244,38 @@ class OfflineManager:
             return None
 
     def is_server_reachable(self):
-        """Check if server is reachable"""
+        now = time.time()
+
+        if now - self._last_health_check < self._health_ttl:
+            return self._server_reachable
+
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "USB-Encryption-Agent/1.0",
         }
+
         try:
-            response = requests.get(f"{self.server_url}/", headers=headers, timeout=5)
-            print(response.status_code, response.text)
-            return response.status_code == 200
+            r = requests.get(f"{self.server_url}/health", headers=headers, timeout=3)
+            self._server_reachable = r.status_code == 200
         except:
-            return False
+            self._server_reachable = False
+
+        self._last_health_check = now
+        return self._server_reachable
+
+    def get_server_status(self, force=False):
+        now = time.time()
+
+        if (
+            force
+            or self._server_reachable is None
+            or now - self._last_health_check > self._health_check_interval
+        ):
+            self._server_reachable = self.is_server_reachable()
+            self._last_health_check = now
+
+        return self._server_reachable
 
     def sync_offline_data(self):
         """Sync unsynced data with server"""
@@ -367,29 +390,29 @@ class OfflineManager:
                 logger.error(f"[❌] Sync operation failed: {e}")
                 return False
 
-    def start_sync_thread(self):
-        """Start background sync thread"""
+    # def start_sync_thread(self):
+    #     """Start background sync thread"""
 
-        def sync_worker():
-            while self.running:
-                try:
-                    if self.is_server_reachable():
-                        self.sync_offline_data()
-                    time.sleep(60)  # Sync every minute when server is reachable
-                except Exception as e:
-                    logger.error(f"[❌] Sync thread error: {e}")
-                    time.sleep(30)  # Wait 30 seconds on error
+    #     def sync_worker():
+    #         while self.running:
+    #             try:
+    #                 if self.is_server_reachable():
+    #                     self.sync_offline_data()
+    #                 time.sleep(60)  # Sync every minute when server is reachable
+    #             except Exception as e:
+    #                 logger.error(f"[❌] Sync thread error: {e}")
+    #                 time.sleep(30)  # Wait 30 seconds on error
 
-        self.sync_thread = threading.Thread(target=sync_worker, daemon=True)
-        self.sync_thread.start()
-        logger.info("[🔄] Sync thread started")
+    #     self.sync_thread = threading.Thread(target=sync_worker, daemon=True)
+    #     self.sync_thread.start()
+    #     logger.info("[🔄] Sync thread started")
 
-    def stop_sync_thread(self):
-        """Stop background sync thread"""
-        self.running = False
-        if self.sync_thread and self.sync_thread.is_alive():
-            self.sync_thread.join(timeout=5)
-        logger.info("[⏹️] Sync thread stopped")
+    # def stop_sync_thread(self):
+    #     """Stop background sync thread"""
+    #     self.running = False
+    #     if self.sync_thread and self.sync_thread.is_alive():
+    #         self.sync_thread.join(timeout=5)
+    #     logger.info("[⏹️] Sync thread stopped")
 
     def get_offline_stats(self):
         """Get statistics about offline data"""
@@ -416,7 +439,7 @@ class OfflineManager:
                 "synced_logs": synced_logs,
                 "unsynced_keys": unsynced_keys,
                 "synced_keys": synced_keys,
-                "server_reachable": self.is_server_reachable(),
+                "server_reachable": self._server_reachable,
             }
 
         except Exception as e:
@@ -440,18 +463,14 @@ class OfflineManager:
                 """
                 DELETE FROM offline_logs 
                 WHERE synced = 1 AND timestamp < datetime('now', '-{} days')
-            """.format(
-                    days_old
-                )
+            """.format(days_old)
             )
 
             cursor.execute(
                 """
                 DELETE FROM offline_keys 
                 WHERE synced = 1 AND created_at < datetime('now', '-{} days')
-            """.format(
-                    days_old
-                )
+            """.format(days_old)
             )
 
             conn.commit()
