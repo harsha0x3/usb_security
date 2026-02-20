@@ -368,6 +368,84 @@ class DBUtils:
             if "conn" in locals():
                 conn.close()
 
+    # ---------------------- NEW ----------------------------
+    def insert_offline_logs_bulk(self, logs):
+        """Insert multiple offline logs in a single transaction"""
+        if not logs:
+            return 0
+
+        insert_query = """
+            INSERT INTO audit_logs 
+            (username, action, details, usb_serial_hash, machine_id, operation, status, files, offline_source, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        values = [
+            (
+                log.get("username", "offline_user"),
+                log["action"],
+                log.get("details", ""),
+                log["usb_serial_hash"],
+                log["machine_id"],
+                log["operation"],
+                log["status"],
+                log.get("files", ""),
+                True,  # offline_source
+                log.get("timestamp") or datetime.utcnow(),
+            )
+            for log in logs
+        ]
+
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cursor:
+                cursor.executemany(insert_query, values)
+            conn.commit()
+            return len(values)
+        except Exception as e:
+            print(f"[ERROR] Bulk log insert failed: {e}")
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
+
+    def store_offline_keys_bulk(self, keys):
+        """Insert multiple offline keys in a single transaction"""
+        if not keys:
+            return 0
+
+        insert_query = """
+            INSERT INTO offline_keys
+            (usb_serial_hash, machine_id, encryption_key, purpose, offline_source, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                encryption_key = VALUES(encryption_key),
+                synced_at = CURRENT_TIMESTAMP
+        """
+        values = [
+            (
+                key["usb_serial_hash"],
+                key["machine_id"],
+                key["encryption_key"],
+                key["purpose"],
+                True,
+                key.get("created_at") or datetime.utcnow(),
+            )
+            for key in keys
+        ]
+
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cursor:
+                cursor.executemany(insert_query, values)
+            conn.commit()
+            return len(values)
+        except Exception as e:
+            print(f"[ERROR] Bulk key insert failed: {e}")
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
+
     # ---------------------- Audit Logs ----------------------
     # def insert_log(
     #     self,

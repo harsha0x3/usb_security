@@ -1,5 +1,4 @@
-# usb_decrypt_virtual_agent_offline.py - Updated with Offline Support
-
+# Client\usb_decrypt_virtual_agent.py
 import os
 import time
 import socket
@@ -20,7 +19,7 @@ from offline_manager import OfflineManager
 
 load_dotenv()
 
-SERVER_URL = "https://usbapp.titan.in"
+SERVER_URL = "http://localhost:8054"
 ENCRYPTED_EXT = ".locked"
 DECRYPTED_BASE = r"C:\Temp\.decrypted_usb"
 VIRTUAL_DRIVE_LETTER = "Z:"
@@ -658,5 +657,5 @@ if __name__ == "__main__":
     try:
         main()
     finally:
-        offline_manager.stop_sync_thread()
+        # offline_manager.stop_sync_thread()
         print("[👋] Decrypt agent stopped")
