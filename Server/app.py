@@ -50,9 +50,9 @@ def deny_browser_requests():
 
 
 @app.before_request
-def block_trace_and_options():
-    if request.method == "TRACE":
-        abort(405)
+def block_unsafe_methods():
+    if request.method in ["TRACE", "OPTIONS", "DELETE", "TRACK"]:
+        return jsonify({"error": "Method not allowed"}), 405
 
 
 @app.after_request
@@ -67,6 +67,17 @@ def remove_cors_headers(response):
     for header in cors_headers:
         response.headers.pop(header, None)
 
+    return response
+
+
+@app.after_request
+def secure_headers(response):
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains; preload"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
     return response
 
 
