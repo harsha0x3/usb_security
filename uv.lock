@@ -634,17 +634,17 @@ dependencies = [
     { name = "pymysql" },
     { name = "pyotp" },
     { name = "python-dotenv" },
-    { name = "pywin32" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "qrcode" },
     { name = "requests" },
     { name = "watchdog" },
-    { name = "wmi" },
+    { name = "wmi", marker = "sys_platform == 'win32'" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cryptography", specifier = ">=46.0.2" },
-    { name = "flask", extras = ["standard"], specifier = ">=3.1.2" },
+    { name = "flask", specifier = ">=3.1.2" },
     { name = "flask-cors", specifier = ">=6.0.2" },
     { name = "flask-jwt-extended", specifier = ">=4.7.1" },
     { name = "flask-limiter", specifier = ">=4.0.0" },
@@ -655,11 +655,11 @@ requires-dist = [
     { name = "pymysql", specifier = ">=1.1.2" },
     { name = "pyotp", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
-    { name = "pywin32", specifier = ">=311" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==311" },
     { name = "qrcode", specifier = ">=8.2" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "watchdog", specifier = ">=6.0.0" },
-    { name = "wmi", specifier = ">=1.5.1" },
+    { name = "wmi", marker = "sys_platform == 'win32'", specifier = ">=1.5.1" },
 ]
 
 [[package]]

@@ -1,0 +1,177 @@
+{
+  "info": {
+    "name": "USB Security Server API",
+    "description": "VAPT walkthrough collection for USB Security Server",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8054"
+    },
+    {
+      "key": "jwt_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"admin_user\",\n  \"password\": \"Password123\",\n  \"totp\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/login",
+          "host": ["{{base_url}}"],
+          "path": ["login"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200 && pm.response.json().token) {",
+              "    pm.collectionVariables.set(\"jwt_token\", pm.response.json().token);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Secure Data (JWT Protected)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/secure-data",
+          "host": ["{{base_url}}"],
+          "path": ["secure-data"]
+        }
+      }
+    },
+    {
+      "name": "Authorize Device",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"usb_serial_hash\": \"USBHASH1234567890\",\n  \"machine_id\": \"MACHINEID1234567890\",\n  \"purpose\": \"Auto Encrypt\",\n  \"files\": [\"document.pdf\", \"image.png\"]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/authorize",
+          "host": ["{{base_url}}"],
+          "path": ["authorize"]
+        }
+      }
+    },
+    {
+      "name": "Sync Offline Log",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"offline_user\",\n  \"action\": \"encrypt_file\",\n  \"details\": \"Encrypted file while offline\",\n  \"usb_serial_hash\": \"USBHASH1234567890\",\n  \"machine_id\": \"MACHINEID1234567890\",\n  \"operation\": \"Auto Encrypt\",\n  \"status\": \"success\",\n  \"files\": \"document.pdf\",\n  \"timestamp\": \"2026-01-01T10:00:00Z\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/sync/log",
+          "host": ["{{base_url}}"],
+          "path": ["sync", "log"]
+        }
+      }
+    },
+    {
+      "name": "Sync Offline Logs Bulk",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"logs\": [\n    {\n      \"username\": \"offline_user\",\n      \"action\": \"decrypt_file\",\n      \"details\": \"Offline decrypt\",\n      \"usb_serial_hash\": \"USBHASH1234567890\",\n      \"machine_id\": \"MACHINEID1234567890\",\n      \"operation\": \"Auto Decrypt\",\n      \"status\": \"success\",\n      \"files\": \"secret.docx\",\n      \"timestamp\": \"2026-01-01T11:00:00Z\"\n    }\n  ],\n  \"keys\": []\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/sync/logs_bulk",
+          "host": ["{{base_url}}"],
+          "path": ["sync", "logs_bulk"]
+        }
+      }
+    },
+    {
+      "name": "Sync Offline Key",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"usb_serial_hash\": \"USBHASH1234567890\",\n  \"machine_id\": \"MACHINEID1234567890\",\n  \"encryption_key\": \"BASE64ENCODEDKEY==\",\n  \"purpose\": \"Auto Encrypt\",\n  \"created_at\": \"2026-01-01T12:00:00Z\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/sync/key",
+          "host": ["{{base_url}}"],
+          "path": ["sync", "key"]
+        }
+      }
+    },
+    {
+      "name": "Sync Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/sync/status",
+          "host": ["{{base_url}}"],
+          "path": ["sync", "status"]
+        }
+      }
+    }
+  ]
+}

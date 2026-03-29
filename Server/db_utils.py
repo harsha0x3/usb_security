@@ -547,6 +547,21 @@ class DBUtils:
             fetchone=True,
         )
 
+    def get_device_by_usb_and_machine_id(self, serial_hash: str, machine_id: str):
+        try:
+            sql = """
+    SELECT *
+    FROM autorized_devices
+    WHERE usb_serial_hash = %s
+    AND (encryption_machine_id = %s OR decryption_machine_id = %s);
+"""
+            return self._execute(
+                sql, (serial_hash, machine_id, machine_id), fetchone=True
+            )
+        except Exception as e:
+            print("ERROR IN get_device_by_usb_and_machine_id new", e)
+            return None
+
     def get_device_by_serial_and_machine(self, serial_hash, machine_id, purpose):
         if purpose == "encrypt":
             sql = """

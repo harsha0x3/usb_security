@@ -1,7 +1,7 @@
 # app.py - WORKING VERSION with Built-in Talisman Nonce Support
+# https://usbapp.titan.in
 
-from flask import Flask, request, jsonify, make_response
-from flask_cors import CORS
+from flask import Flask, request, jsonify, make_response, abort
 from werkzeug.security import check_password_hash
 import pyotp
 import jwt
@@ -25,6 +25,7 @@ from flask_jwt_extended import (
 )
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import json
 
 load_dotenv()
 
@@ -34,58 +35,39 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
 
-# Configure Talisman with automatic nonce generation
-# Talisman(
-#     app,
-#     # HTTPS configuration
-#     force_https=False,
-#     strict_transport_security=True,
-#     strict_transport_security_max_age=31536000,
-#     strict_transport_security_include_subdomains=True,
-#     strict_transport_security_preload=True,
-#     # CSP without problematic CDNs - Talisman handles nonces automatically
-#     content_security_policy={
-#         "default-src": "'self'",
-#         "script-src": "",  # Talisman adds nonce automatically
-#         "style-src": "'self' https://fonts.googleapis.com",  # Talisman adds nonce automatically
-#         "font-src": "'self' https://fonts.gstatic.com",
-#         "img-src": "'self' data:",
-#         "connect-src": "'self' https://usbapp.titancustomers.com",
-#         "base-uri": "'self'",
-#         "form-action": "'self'",
-#         "form-action": "'self'",
-#         "frame-ancestors": "'self'",
-#         "object-src": "'none'",
-#         "media-src": "'self'",
-#         "worker-src": "'self'",
-#         "child-src": "'self'",
-#         "manifest-src": "'self'",
-#         "report-uri": "/csp-report",
-#     },
-#     # Enable automatic nonce generation
-#     content_security_policy_nonce_in=["script-src", "style-src"],
-#     # Security headers
-#     frame_options="DENY",
-#     x_content_type_options=True,
-#     x_xss_protection=True,
-#     referrer_policy="strict-origin-when-cross-origin",
-#     # Cookie settings for HTTP
-#     session_cookie_secure=True,
-#     # Permissions Policy
-#     permissions_policy={
-#         "geolocation": "()",
-#         "microphone": "()",
-#         "camera": "()",
-#         "payment": "()",
-#         "usb": "()",
-#         "accelerometer": "()",
-#         "gyroscope": "()",
-#         "magnetometer": "()",
-#         "fullscreen": "(self)",
-#     },
-# )
+
+@app.before_request
+def deny_browser_requests():
+    origin = request.headers.get("Origin")
+    referer = request.headers.get("Referer")
+
+    if origin or referer:
+        logger.warning(
+            f"[🚨] Blocked browser request | Origin: {origin}, Referer: {referer}"
+        )
+        abort(403)
+
+
+@app.before_request
+def block_trace_and_options():
+    if request.method == "TRACE":
+        abort(405)
+
+
+@app.after_request
+def remove_cors_headers(response):
+    cors_headers = [
+        "Access-Control-Allow-Origin",
+        "Access-Control-Allow-Credentials",
+        "Access-Control-Allow-Headers",
+        "Access-Control-Allow-Methods",
+    ]
+
+    for header in cors_headers:
+        response.headers.pop(header, None)
+
+    return response
 
 
 # Make nonce available in templates
@@ -198,7 +180,7 @@ class InputValidator:
         return purpose
 
     @staticmethod
-    def validate_file_list(files):
+    def validate_file_list(files: list[str]):
         """Validate file list"""
         if files is None:
             return []
@@ -264,6 +246,28 @@ def test():
     return "Welcome"
 
 
+def is_machine_valid(machine_id: str, usb_serial_hash: str):
+    try:
+        usb_serial_hash = InputValidator.validate_hash_string(
+            usb_serial_hash, "USB Serial Hash"
+        )
+        machine_id = InputValidator.validate_hash_string(machine_id, "Machine ID")
+
+        device = db.get_device_by_usb_and_machine_id(
+            serial_hash=usb_serial_hash, machine_id=machine_id
+        )
+        if not device:
+            return False
+
+        return True
+
+    except Exception as e:
+        print("ERROR IN is machine valid", e)
+        return jsonify(
+            {"error": "Access Denied", "detail": "Invalid Machine or USB hash"}
+        ), 403
+
+
 # Additional sync endpoints to add to your existing app.py
 
 from datetime import datetime
@@ -277,9 +281,13 @@ from datetime import datetime
 def sync_offline_log():
     """Receive and store offline logs from clients"""
     try:
-        data = request.get_json()
+        data = json.loads(request.data, object_pairs_hook=dict)
+
         if not data:
             return jsonify({"error": "JSON payload required"}), 400
+
+        if len(data) != len(set(data.keys())):
+            return jsonify({"error": "Duplicate keys in JSON"}), 400
 
         # Validate required fields
         required_fields = [
@@ -294,28 +302,88 @@ def sync_offline_log():
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
 
+        # Validate username
+        username = InputValidator.validate_username(
+            data.get("username", "offline_user")
+        )
+
+        if not is_machine_valid(
+            machine_id=data["machine_id"], usb_serial_hash=data["usb_serial_hash"]
+        ):
+            return jsonify(
+                {"error": "403: Access Denied", "detail": "Invalid Machine or USB hash"}
+            ), 403
+
+        if username.strip().lower() not in ["offline_user", "online_user"]:
+            return jsonify(
+                {"error": "400: Bad Request", "detail": "Invalid Username"}
+            ), 400
+
+        # Allowed values
+        allowed_actions = [
+            "authorization_check",
+            "key_retrieval",
+            "key_not_found",
+            "auto_decrypt",
+            "authorization_failed",
+            "authorization_denied",
+            "decryption_completed",
+            "usb_removed",
+            "key_generation",
+            "new_files_encrypted",
+            "encryption_completed",
+        ]
+        allowed_operations = ["Auto Encrypt", "Auto Decrypt"]
+        allowed_statuses = ["success", "denied"]
+
+        # Validate action
+        action = data.get("action", "").strip()
+        if action not in allowed_actions:
+            return jsonify({"error": "Invalid action"}), 400
+        if not re.match(r"^[a-z0-9_]+$", action):
+            return jsonify({"error": "Action contains invalid characters"}), 400
+
+        # Validate operation
+        operation = data.get("operation", "").strip()
+        if operation not in allowed_operations:
+            return jsonify({"error": "Invalid operation"}), 400
+        if not re.match(r"^[A-Za-z0-9_ ]+$", operation):
+            return jsonify({"error": "Operation contains invalid characters"}), 400
+
+        # Validate status
+        status = data.get("status", "").strip()
+        if status not in allowed_statuses:
+            return jsonify({"error": "Invalid status"}), 400
+
+        # Validate details: allow only letters, numbers, underscores
+        raw_details = data.get("details", "")
+        if not re.match(r"^[a-zA-Z0-9_]*$", raw_details):
+            return jsonify({"error": "Details contains invalid characters"}), 400
+        details = raw_details.strip()
+
         # Insert offline log with offline_source flag
+        raw_files = data.get("files", "")
+        validated_files = InputValidator.validate_file_list(files=raw_files.split(","))
         success = db.insert_log(
-            username=data.get("username", "offline_user"),
-            action=data["action"],
-            details=data.get("details", ""),
+            username=username,
+            action=action,
+            details=details,
             usb_serial_hash=data["usb_serial_hash"],
             machine_id=data["machine_id"],
-            operation=data["operation"],
-            status=data["status"],
-            files=data.get("files", ""),
+            operation=operation,
+            status=status,
+            files=(", ").join(validated_files),
             offline_source=True,
             timestamp=data.get("timestamp"),  # Use client timestamp if provided
         )
 
         if success:
             logger.info(
-                f"[✅] Synced offline log: {data['action']} for USB {data['usb_serial_hash'][:8]}..."
+                f"[✅] Synced offline log: {action} for USB {data['usb_serial_hash'][:8]}..."
             )
-            return (
-                jsonify({"status": "success", "message": "Log synced successfully"}),
-                200,
-            )
+            return jsonify(
+                {"status": "success", "message": "Log synced successfully"}
+            ), 200
         else:
             logger.error(f"[❌] Failed to sync offline log")
             return jsonify({"error": "Failed to store log"}), 500
@@ -325,52 +393,27 @@ def sync_offline_log():
         return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/sync/logs_bulk", methods=["POST"])
-@limiter.limit("10 per minute")
-@secure_request
-def sync_offline_bulk():
-    """Receive and store multiple offline logs and keys in a single request efficiently"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "JSON payload required"}), 400
-
-        logs = data.get("logs", [])
-        keys = data.get("keys", [])
-
-        synced_logs = db.insert_offline_logs_bulk(logs)
-        synced_keys = db.store_offline_keys_bulk(keys)
-
-        logger.info(
-            f"[📊] Bulk batch sync completed: {synced_logs} logs, {synced_keys} keys"
-        )
-
-        return jsonify(
-            {
-                "status": "completed",
-                "synced_logs": synced_logs,
-                "synced_keys": synced_keys,
-                "errors": [],  # Optional: collect validation errors beforehand if needed
-            }
-        ), 200
-
-    except Exception as e:
-        logger.error(f"[❌] Error in batch sync: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-
 @app.route("/get_excluded_extensions", methods=["POST"])
 @limiter.limit("200 per minute")
 @secure_request
 def get_excluded_extensions():
     """Get excluded file extensions for a USB device"""
     try:
-        data = request.get_json()
+        data = json.loads(request.data, object_pairs_hook=dict)
+
+        if not data:
+            return jsonify({"error": "JSON payload required"}), 400
+
         usb_serial_hash = data.get("usb_serial_hash")
         machine_id = data.get("machine_id")
 
         if not usb_serial_hash:
             return jsonify({"error": "USB serial hash required"}), 400
+
+        if not is_machine_valid(machine_id=machine_id, usb_serial_hash=usb_serial_hash):
+            return jsonify(
+                {"error": "403: Access Denied", "detail": "Invalid Machine or USB hash"}
+            ), 403
 
         extensions = db.get_excluded_extensions(usb_serial_hash, machine_id=machine_id)
 
@@ -381,133 +424,8 @@ def get_excluded_extensions():
         return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/sync/key", methods=["POST"])
-@limiter.limit("20 per minute")  # Moderate limit for key sync
-@secure_request
-def sync_offline_key():
-    """Receive and store offline keys from clients"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "JSON payload required"}), 400
-
-        # Validate required fields
-        required_fields = ["usb_serial_hash", "machine_id", "encryption_key", "purpose"]
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing required field: {field}"}), 400
-
-        # Store offline key in keys table (you may need to create this table)
-        success = db.store_offline_key(
-            usb_serial_hash=data["usb_serial_hash"],
-            machine_id=data["machine_id"],
-            encryption_key=data["encryption_key"],
-            purpose=data["purpose"],
-            created_at=data.get("created_at"),
-            offline_source=True,
-        )
-
-        if success:
-            logger.info(
-                f"[✅] Synced offline key for USB {data['usb_serial_hash'][:8]}..."
-            )
-            return (
-                jsonify({"status": "success", "message": "Key synced successfully"}),
-                200,
-            )
-        else:
-            logger.error(f"[❌] Failed to sync offline key")
-            return jsonify({"error": "Failed to store key"}), 500
-
-    except Exception as e:
-        logger.error(f"[❌] Error syncing offline key: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-
-@app.route("/sync/batch", methods=["POST"])
-@limiter.limit("10 per minute")  # Lower limit for batch operations
-@secure_request
-def sync_offline_batch():
-    """Receive and store multiple offline logs and keys in a single request"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "JSON payload required"}), 400
-
-        logs = data.get("logs", [])
-        keys = data.get("keys", [])
-
-        synced_logs = 0
-        synced_keys = 0
-        errors = []
-
-        # Process logs
-        for log_data in logs:
-            try:
-                success = db.insert_log(
-                    username=log_data.get("username", "offline_user"),
-                    action=log_data["action"],
-                    details=log_data.get("details", ""),
-                    usb_serial_hash=log_data["usb_serial_hash"],
-                    machine_id=log_data["machine_id"],
-                    operation=log_data["operation"],
-                    status=log_data["status"],
-                    files=log_data.get("files", ""),
-                    offline_source=True,
-                    timestamp=log_data.get("timestamp"),
-                )
-                if success:
-                    synced_logs += 1
-                else:
-                    errors.append(
-                        f"Failed to sync log: {log_data.get('action', 'unknown')}"
-                    )
-            except Exception as e:
-                errors.append(f"Log sync error: {str(e)}")
-
-        # Process keys
-        for key_data in keys:
-            try:
-                success = db.store_offline_key(
-                    usb_serial_hash=key_data["usb_serial_hash"],
-                    machine_id=key_data["machine_id"],
-                    encryption_key=key_data["encryption_key"],
-                    purpose=key_data["purpose"],
-                    created_at=key_data.get("created_at"),
-                    offline_source=True,
-                )
-                if success:
-                    synced_keys += 1
-                else:
-                    errors.append(
-                        f"Failed to sync key for USB: {key_data.get('usb_serial_hash', 'unknown')[:8]}..."
-                    )
-            except Exception as e:
-                errors.append(f"Key sync error: {str(e)}")
-
-        logger.info(
-            f"[📊] Batch sync completed: {synced_logs} logs, {synced_keys} keys"
-        )
-
-        return (
-            jsonify(
-                {
-                    "status": "completed",
-                    "synced_logs": synced_logs,
-                    "synced_keys": synced_keys,
-                    "errors": errors,
-                }
-            ),
-            200,
-        )
-
-    except Exception as e:
-        logger.error(f"[❌] Error in batch sync: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-
 @app.route("/sync/status", methods=["GET"])
-@limiter.limit("30 per minute")  # Allow frequent status checks
+@limiter.limit("10 per minute")  # Allow frequent status checks
 @secure_request
 def sync_status():
     """Get sync status and statistics"""
@@ -533,7 +451,7 @@ def sync_status():
 
 
 @app.route("/health", methods=["GET"])
-@limiter.limit("100 per minute")  # High limit for health checks
+@limiter.limit("50 per minute")  # High limit for health checks
 def health_check():
     """Simple health check endpoint for offline manager"""
     return (
@@ -564,10 +482,10 @@ def generate_token(user):
 @secure_request
 def authorize_device():
     try:
-        data = request.get_json()
+        data = json.loads(request.data, object_pairs_hook=dict)
+
         if not data:
             return jsonify({"error": "JSON payload required"}), 400
-
         # Input validation
         usb_serial_hash = InputValidator.validate_hash_string(
             data.get("usb_serial_hash"), "USB Serial Hash"
@@ -576,7 +494,7 @@ def authorize_device():
             data.get("machine_id"), "Machine ID"
         )
         purpose = InputValidator.validate_purpose(data.get("purpose"))
-        files = InputValidator.validate_file_list(data.get("files"))
+        files = InputValidator.validate_file_list(data.get("files", "").split(","))
 
         file_names = ", ".join(files)
 
@@ -684,7 +602,8 @@ def authorize_device():
 @secure_request
 def login():
     try:
-        data = request.get_json()
+        data = json.loads(request.data, object_pairs_hook=dict)
+
         if not data:
             return jsonify({"error": "JSON payload required"}), 400
 
@@ -804,3 +723,337 @@ if __name__ == "__main__":
         debug=False,
         request_handler=NoServerHeaderWSGIRequestHandler,
     )  # Disable debug in production
+
+
+# @app.route("/sync/logs_bulk", methods=["POST"])
+# @limiter.limit("10 per minute")
+# @secure_request
+# def sync_offline_bulk():
+#     """Receive and store multiple offline logs and keys in a single request efficiently"""
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             return jsonify({"error": "JSON payload required"}), 400
+
+#         logs = data.get("logs", [])
+#         keys = data.get("keys", [])
+
+#         synced_logs = db.insert_offline_logs_bulk(logs)
+#         synced_keys = db.store_offline_keys_bulk(keys)
+
+#         logger.info(
+#             f"[📊] Bulk batch sync completed: {synced_logs} logs, {synced_keys} keys"
+#         )
+
+#         return jsonify(
+#             {
+#                 "status": "completed",
+#                 "synced_logs": synced_logs,
+#                 "synced_keys": synced_keys,
+#                 "errors": [],  # Optional: collect validation errors beforehand if needed
+#             }
+#         ), 200
+
+#     except Exception as e:
+#         logger.error(f"[❌] Error in batch sync: {e}")
+#         return jsonify({"error": "Internal server error"}), 500
+
+
+# @app.route("/sync/key", methods=["POST"])
+# @limiter.limit("20 per minute")  # Moderate limit for key sync
+# @secure_request
+# def sync_offline_key():
+#     """Receive and store offline keys from clients"""
+#     try:
+#         data = json.loads(request.data, object_pairs_hook=dict)
+
+#         if not data:
+#             return jsonify({"error": "JSON payload required"}), 400
+
+#         if not data:
+#             return jsonify({"error": "JSON payload required"}), 400
+
+#         # Validate required fields
+#         required_fields = ["usb_serial_hash", "machine_id", "encryption_key", "purpose"]
+#         for field in required_fields:
+#             if field not in data:
+#                 return jsonify({"error": f"Missing required field: {field}"}), 400
+
+#         if (
+#             not data.get("encryption_key")
+#             or data.get("encryption_key", "").strip() == ""
+#         ):
+#             return jsonify(
+#                 {"error": "400: Bad Request", "detail": "Empty Encryption key"}
+#             )
+
+#         usb_serial_hash = InputValidator.validate_hash_string(
+#             data.get("usb_serial_hash"), "USB Serial Hash"
+#         )
+#         machine_id = InputValidator.validate_hash_string(
+#             data.get("machine_id"), "Machine ID"
+#         )
+#         purpose = InputValidator.validate_purpose(data.get("purpose"))
+
+#         device = db.get_device_by_serial_and_machine(
+#             serial_hash=usb_serial_hash, machine_id=machine_id, purpose=purpose
+#         )
+
+#         if not device:
+#             return jsonify(
+#                 {"error": "403: Access Denied", "detail": "Invalid Machine or USB hash"}
+#             ), 403
+
+#         is_encrypt = (
+#             purpose == "Auto Encrypt"
+#             and device.get("allow_encrypt")
+#             and device.get("encryption_machine_id") == machine_id
+#         )
+
+#         is_decrypt = (
+#             purpose in ["Auto Decrypt", "GUI Decrypt"]
+#             and device.get("allow_decrypt")
+#             and device.get("decryption_machine_id") == machine_id
+#         )
+
+#         if is_encrypt or is_decrypt:
+#             key = (
+#                 device.get("encryption_key")
+#                 if is_encrypt
+#                 else device.get("decryption_key") or device.get("encryption_key")
+#             )
+
+#             if key:
+#                 return jsonify(
+#                     {"error": "400: Bad Request", "detail": "Key already exists"}
+#                 ), 400
+
+#         # Store offline key in keys table (you may need to create this table)
+#         success = db.store_offline_key(
+#             usb_serial_hash=data["usb_serial_hash"],
+#             machine_id=data["machine_id"],
+#             encryption_key=data["encryption_key"],
+#             purpose=data["purpose"],
+#             created_at=data.get("created_at"),
+#             offline_source=True,
+#         )
+
+#         if success:
+#             logger.info(
+#                 f"[✅] Synced offline key for USB {data['usb_serial_hash'][:8]}..."
+#             )
+#             return (
+#                 jsonify({"status": "success", "message": "Key synced successfully"}),
+#                 200,
+#             )
+#         else:
+#             logger.error(f"[❌] Failed to sync offline key")
+#             return jsonify({"error": "Failed to store key"}), 500
+
+#     except Exception as e:
+#         logger.error(f"[❌] Error syncing offline key: {e}")
+#         return jsonify({"error": "Internal server error"}), 500
+
+
+# @app.route("/sync/batch", methods=["POST"])
+# @limiter.limit("10 per minute")  # Lower limit for batch operations
+# @secure_request
+# def sync_offline_batch():
+#     """Receive and store multiple offline logs and keys in a single request"""
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             return jsonify({"error": "JSON payload required"}), 400
+
+#         logs = data.get("logs", [])
+#         keys = data.get("keys", [])
+
+#         synced_logs = 0
+#         synced_keys = 0
+#         errors = []
+
+#         # Process logs
+#         for log_data in logs:
+#             try:
+#                 success = db.insert_log(
+#                     username=log_data.get("username", "offline_user"),
+#                     action=log_data["action"],
+#                     details=log_data.get("details", ""),
+#                     usb_serial_hash=log_data["usb_serial_hash"],
+#                     machine_id=log_data["machine_id"],
+#                     operation=log_data["operation"],
+#                     status=log_data["status"],
+#                     files=log_data.get("files", ""),
+#                     offline_source=True,
+#                     timestamp=log_data.get("timestamp"),
+#                 )
+#                 if success:
+#                     synced_logs += 1
+#                 else:
+#                     errors.append(
+#                         f"Failed to sync log: {log_data.get('action', 'unknown')}"
+#                     )
+#             except Exception as e:
+#                 errors.append(f"Log sync error: {str(e)}")
+
+#         # Process keys
+#         for key_data in keys:
+#             try:
+#                 success = db.store_offline_key(
+#                     usb_serial_hash=key_data["usb_serial_hash"],
+#                     machine_id=key_data["machine_id"],
+#                     encryption_key=key_data["encryption_key"],
+#                     purpose=key_data["purpose"],
+#                     created_at=key_data.get("created_at"),
+#                     offline_source=True,
+#                 )
+#                 if success:
+#                     synced_keys += 1
+#                 else:
+#                     errors.append(
+#                         f"Failed to sync key for USB: {key_data.get('usb_serial_hash', 'unknown')[:8]}..."
+#                     )
+#             except Exception as e:
+#                 errors.append(f"Key sync error: {str(e)}")
+
+#         logger.info(
+#             f"[📊] Batch sync completed: {synced_logs} logs, {synced_keys} keys"
+#         )
+
+#         return (
+#             jsonify(
+#                 {
+#                     "status": "completed",
+#                     "synced_logs": synced_logs,
+#                     "synced_keys": synced_keys,
+#                     "errors": errors,
+#                 }
+#             ),
+#             200,
+#         )
+
+#     except Exception as e:
+#         logger.error(f"[❌] Error in batch sync: {e}")
+#         return jsonify({"error": "Internal server error"}), 500
+
+# Configure Talisman with automatic nonce generation
+# Talisman(
+#     app,
+#     # HTTPS configuration
+#     force_https=False,
+#     strict_transport_security=True,
+#     strict_transport_security_max_age=31536000,
+#     strict_transport_security_include_subdomains=True,
+#     strict_transport_security_preload=True,
+#     # CSP without problematic CDNs - Talisman handles nonces automatically
+#     content_security_policy={
+#         "default-src": "'self'",
+#         "script-src": "",  # Talisman adds nonce automatically
+#         "style-src": "'self' https://fonts.googleapis.com",  # Talisman adds nonce automatically
+#         "font-src": "'self' https://fonts.gstatic.com",
+#         "img-src": "'self' data:",
+#         "connect-src": "'self' https://usbapp.titancustomers.com",
+#         "base-uri": "'self'",
+#         "form-action": "'self'",
+#         "form-action": "'self'",
+#         "frame-ancestors": "'self'",
+#         "object-src": "'none'",
+#         "media-src": "'self'",
+#         "worker-src": "'self'",
+#         "child-src": "'self'",
+#         "manifest-src": "'self'",
+#         "report-uri": "/csp-report",
+#     },
+#     # Enable automatic nonce generation
+#     content_security_policy_nonce_in=["script-src", "style-src"],
+#     # Security headers
+#     frame_options="DENY",
+#     x_content_type_options=True,
+#     x_xss_protection=True,
+#     referrer_policy="strict-origin-when-cross-origin",
+#     # Cookie settings for HTTP
+#     session_cookie_secure=True,
+#     # Permissions Policy
+#     permissions_policy={
+#         "geolocation": "()",
+#         "microphone": "()",
+#         "camera": "()",
+#         "payment": "()",
+#         "usb": "()",
+#         "accelerometer": "()",
+#         "gyroscope": "()",
+#         "magnetometer": "()",
+#         "fullscreen": "(self)",
+#     },
+# )
+
+
+# ----------------- Removing Origin Headers from Nginx ------------------
+
+# if ($http_origin) {
+#     return 403;
+# }
+
+# if ($request_method = TRACE) {
+#     return 405;
+# }
+
+# location / {
+#     if ($request_method !~ ^(GET|POST)$ ) {
+#         return 405;
+#     }
+# }
+
+
+# server {
+#     listen 443 ssl http2;
+#     server_name usbapp.titan.in;
+
+#     # Paths to your certificate and key
+#     ssl_certificate /etc/ssl/certs/your_cert.crt;
+#     ssl_certificate_key /etc/ssl/private/your_key.key;
+
+#     # Only strong TLS protocols
+#     ssl_protocols TLSv1.2 TLSv1.3;
+
+#     # Strong ciphers (AEAD + forward secrecy), no CBC
+#     ssl_ciphers 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:
+#                  ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:
+#                  ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+
+#     ssl_prefer_server_ciphers on;
+
+#     # Session security
+#     ssl_session_cache shared:SSL:10m;
+#     ssl_session_timeout 10m;
+
+#     # HSTS
+#     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+#     # Security headers
+#     add_header X-Content-Type-Options nosniff;
+#     add_header X-Frame-Options DENY;
+#     add_header X-XSS-Protection "1; mode=block";
+#     add_header Referrer-Policy "no-referrer-when-downgrade";
+
+#     # Flask app proxy
+#     location / {
+#         proxy_pass http://127.0.0.1:8054;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+
+#     # Deny TRACE, OPTIONS, and other unsafe methods
+#     if ($request_method ~* "(TRACE|DELETE|TRACK|OPTIONS)") {
+#         return 405;
+#     }
+# }
+
+# # Redirect HTTP to HTTPS
+# server {
+#     listen 80;
+#     server_name usbapp.titan.in;
+#     return 301 https://$host$request_uri;
+# }
