@@ -37,16 +37,16 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 
-@app.before_request
-def deny_browser_requests():
-    origin = request.headers.get("Origin")
-    referer = request.headers.get("Referer")
+# @app.before_request
+# def deny_browser_requests():
+#     origin = request.headers.get("Origin")
+#     referer = request.headers.get("Referer")
 
-    if origin or referer:
-        logger.warning(
-            f"[🚨] Blocked browser request | Origin: {origin}, Referer: {referer}"
-        )
-        abort(403)
+#     if origin or referer:
+#         logger.warning(
+#             f"[🚨] Blocked browser request | Origin: {origin}, Referer: {referer}"
+#         )
+#         abort(403)
 
 
 @app.before_request
@@ -608,55 +608,6 @@ def authorize_device():
         return jsonify({"status": "denied", "key": None})
 
 
-@app.route("/login", methods=["POST"])
-@limiter.limit("5 per minute")  # Strict rate limit for login attempts
-@secure_request
-def login():
-    try:
-        data = json.loads(request.data, object_pairs_hook=dict)
-
-        if not data:
-            return jsonify({"error": "JSON payload required"}), 400
-
-        # Input validation
-        username = InputValidator.validate_username(data.get("username"))
-        password = InputValidator.validate_password(data.get("password"))
-        totp_code = InputValidator.validate_totp_code(data.get("totp"))
-
-    except ValidationError as e:
-        logger.warning(f"[❌] Login validation failed: {str(e)}")
-        return jsonify({"error": f"Validation error: {str(e)}"}), 400
-    except Exception as e:
-        logger.error(f"[❌] Unexpected error in login validation: {str(e)}")
-        return jsonify({"error": "Invalid request format"}), 400
-
-    user = db.get_user(username)
-    if not user:
-        logger.warning(f"[❌] User not found: {username}")
-        return jsonify({"error": "Invalid credentials"}), 401
-
-    if not check_password_hash(user["password_hash"], password):
-        logger.warning(f"[❌] Password mismatch for user: {username}")
-        return jsonify({"error": "Invalid credentials"}), 401
-
-    # Check if MFA is enabled (mfa_secret non-empty)
-    mfa_secret = user.get("mfa_secret")
-    if mfa_secret:
-        if not totp_code:
-            # Inform client MFA is required
-            logger.info(f"[ℹ️] MFA required for user: {username}")
-            return jsonify({"mfa_required": True, "message": "MFA code required"}), 200
-
-        totp = pyotp.TOTP(mfa_secret)
-        if not totp.verify(totp_code, valid_window=1):
-            logger.warning(f"[❌] Invalid MFA code for user: {username}")
-            return jsonify({"error": "Invalid MFA code"}), 401
-
-    token = generate_token(user)
-    logger.info(f"[✅] Login successful for user: {username}")
-    return jsonify({"token": token, "status": "success"}), 200
-
-
 @app.route("/secure-data", methods=["GET"])
 @jwt_required()
 @secure_request
@@ -734,6 +685,55 @@ if __name__ == "__main__":
         debug=False,
         request_handler=NoServerHeaderWSGIRequestHandler,
     )  # Disable debug in production
+
+
+# @app.route("/login", methods=["POST"])
+# @limiter.limit("5 per minute")  # Strict rate limit for login attempts
+# @secure_request
+# def login():
+#     try:
+#         data = json.loads(request.data, object_pairs_hook=dict)
+
+#         if not data:
+#             return jsonify({"error": "JSON payload required"}), 400
+
+#         # Input validation
+#         username = InputValidator.validate_username(data.get("username"))
+#         password = InputValidator.validate_password(data.get("password"))
+#         totp_code = InputValidator.validate_totp_code(data.get("totp"))
+
+#     except ValidationError as e:
+#         logger.warning(f"[❌] Login validation failed: {str(e)}")
+#         return jsonify({"error": f"Validation error: {str(e)}"}), 400
+#     except Exception as e:
+#         logger.error(f"[❌] Unexpected error in login validation: {str(e)}")
+#         return jsonify({"error": "Invalid request format"}), 400
+
+#     user = db.get_user(username)
+#     if not user:
+#         logger.warning(f"[❌] User not found: {username}")
+#         return jsonify({"error": "Invalid credentials"}), 401
+
+#     if not check_password_hash(user["password_hash"], password):
+#         logger.warning(f"[❌] Password mismatch for user: {username}")
+#         return jsonify({"error": "Invalid credentials"}), 401
+
+#     # Check if MFA is enabled (mfa_secret non-empty)
+#     mfa_secret = user.get("mfa_secret")
+#     if mfa_secret:
+#         if not totp_code:
+#             # Inform client MFA is required
+#             logger.info(f"[ℹ️] MFA required for user: {username}")
+#             return jsonify({"mfa_required": True, "message": "MFA code required"}), 200
+
+#         totp = pyotp.TOTP(mfa_secret)
+#         if not totp.verify(totp_code, valid_window=1):
+#             logger.warning(f"[❌] Invalid MFA code for user: {username}")
+#             return jsonify({"error": "Invalid MFA code"}), 401
+
+#     token = generate_token(user)
+#     logger.info(f"[✅] Login successful for user: {username}")
+#     return jsonify({"token": token, "status": "success"}), 200
 
 
 # @app.route("/sync/logs_bulk", methods=["POST"])
