@@ -368,7 +368,7 @@ def sync_offline_log():
 
         # Validate details: allow only letters, numbers, underscores
         raw_details = data.get("details", "")
-        if not re.match(r"^[a-zA-Z0-9_]*$", raw_details):
+        if not re.match(r"^[a-zA-Z0-9_ ]*$", raw_details):
             return jsonify({"error": "Details contains invalid characters"}), 400
         details = raw_details.strip()
 
