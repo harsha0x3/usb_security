@@ -551,7 +551,7 @@ class DBUtils:
         try:
             sql = """
     SELECT *
-    FROM autorized_devices
+    FROM authorized_devices
     WHERE usb_serial_hash = %s
     AND (encryption_machine_id = %s OR decryption_machine_id = %s);
 """
